@@ -22,6 +22,7 @@ import {
   CheckCircle,
   LogIn,
   Camera,
+  TrendingUp,
 } from "lucide-react";
 
 // Tool & Business Screens
@@ -278,30 +279,68 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* Security & Architectural Invariants Banner */}
-          <section className="rounded-xl border border-border-subtle bg-soft-ivory p-6 sm:p-8 space-y-4">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-deep-olive" />
-              <h4 className="font-alexandria font-bold text-lg text-warm-charcoal">
-                قواعد النزاهة الهندسية والأمنية الصارمة
-              </h4>
+          {/* System Description & User Value Section */}
+          <section className="rounded-2xl border border-border-subtle bg-soft-ivory p-6 sm:p-10 space-y-8 shadow-xs">
+            <div className="max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-deep-olive/10 text-deep-olive text-xs font-semibold">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>نظام التشغيل المتكامل للمصورين وصناع الفيديو</span>
+              </div>
+              <h3 className="font-alexandria font-bold text-2xl sm:text-3xl text-warm-charcoal">
+                لماذا تحتاج «مساعد المصور» في عملك اليومي؟
+              </h3>
+              <p className="text-sm sm:text-base text-text-secondary leading-relaxed">
+                صُمم «مساعد المصور» ليكون شريكك التشغيلي الذي ينقل عملك من الفوضى والتقديرات التقريبية إلى إدارة استوديو احترافية شاملة؛ يرافقك خطوة بخطوة من استلام البريف وتوثيق متطلبات العميل، مروراً بحساب أدق تكاليف الإنتاج وتنظيم يوم التصوير، وحتى إصدار الفواتير الرسمية وتنمية أرباحك.
+              </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-text-secondary">
-              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
-                <span className="font-semibold block text-warm-charcoal mb-1">منع الفاصلة العائمة:</span>
-                حساب وتخزين كافة الأموال بوحدات العملة الصغرى الصحيحة (BIGINT) دون أي خطأ تقريبي.
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div className="p-5 rounded-xl bg-warm-ivory/70 border border-border-subtle/60 flex flex-col justify-between hover:border-deep-olive/30 transition-colors">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-deep-olive/10 flex items-center justify-center text-deep-olive mb-3">
+                    <TrendingUp className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-base text-warm-charcoal mb-2">تسعير دقيق وحماية للأرباح</h4>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    وداعاً للخسائر غير المحسوبة؛ احسب تكاليف الطاقم والمعدات والاستهلاك وهامش ربحك الفعلي بدقة مالية تامة.
+                  </p>
+                </div>
               </div>
-              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
-                <span className="font-semibold block text-warm-charcoal mb-1">عزل البيانات (RLS):</span>
-                تفعيل أمان مستوى الصفوف على كافة جداول قاعدة البيانات (15 جدولاً علائقياً).
+
+              <div className="p-5 rounded-xl bg-warm-ivory/70 border border-border-subtle/60 flex flex-col justify-between hover:border-deep-olive/30 transition-colors">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-deep-olive/10 flex items-center justify-center text-deep-olive mb-3">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-base text-warm-charcoal mb-2">مظهر احترافي أمام العميل</h4>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    أبهر عملاءك بعروض أسعار وفواتير معتمدة ثنائية اللغة بصيغة PDF أنيقة بالخط العربي، قابلة للطباعة والمشاركة الفورية.
+                  </p>
+                </div>
               </div>
-              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
-                <span className="font-semibold block text-warm-charcoal mb-1">المزامنة دون اتصال:</span>
-                طابور عمليات معزول للحسابات مع حظر صريح لتجاوزات الكتابة فوق الفواتير المالية (No LWW).
+
+              <div className="p-5 rounded-xl bg-warm-ivory/70 border border-border-subtle/60 flex flex-col justify-between hover:border-deep-olive/30 transition-colors">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-deep-olive/10 flex items-center justify-center text-deep-olive mb-3">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-base text-warm-charcoal mb-2">تنظيم شامل ليوم التصوير</h4>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    خطة لقطات سينمائية وقوائم تجهيز المعدات مع حاسبة سعة كروت الذاكرة ومواعيد الإضاءة الطبيعية لضمان سلاسة الإنتاج.
+                  </p>
+                </div>
               </div>
-              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
-                <span className="font-semibold block text-warm-charcoal mb-1">توليد PDF عربي:</span>
-                محرك مدمج لتوليد ملفات PDF عربية بتشكيل حروف متصل وخطوط مضمنة.
+
+              <div className="p-5 rounded-xl bg-warm-ivory/70 border border-border-subtle/60 flex flex-col justify-between hover:border-deep-olive/30 transition-colors">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-deep-olive/10 flex items-center justify-center text-deep-olive mb-3">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-base text-warm-charcoal mb-2">خصوصية تامة وعمل دون إنترنت</h4>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    بياناتك وعملاؤك ملكك وحدك دون اشتراكات أو عمولات، مع قدرة كاملة على العمل دون اتصال أثناء التواجد في اللوكيشن.
+                  </p>
+                </div>
               </div>
             </div>
           </section>
