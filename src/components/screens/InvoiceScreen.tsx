@@ -6,7 +6,8 @@ import { formatMoney, formatDate } from "@/lib/format/intl";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Receipt, PlusCircle, Printer } from "lucide-react";
+import { Receipt, PlusCircle, Printer, Download } from "lucide-react";
+import { ArabicInvoicePdfGenerator } from "@/lib/pdf/invoice-pdf-generator";
 
 export function InvoiceScreen() {
   const { invoice, payments, recordPayment, client, currency } = useProjectStore();
@@ -25,6 +26,29 @@ export function InvoiceScreen() {
   };
 
   const isFullyPaid = invoice.status === "paid";
+
+  const handleDownloadPdf = () => {
+    ArabicInvoicePdfGenerator.downloadInvoicePdf({
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      studioName: "استوديو التصوير الاحترافي",
+      photographerName: "مصور فوتوغرافي",
+      clientName: client.name,
+      projectName: "مشروع تصوير زفاف فخم",
+      items: invoice.items.map((i) => ({
+        description: i.description,
+        quantity: i.quantity,
+        unitPriceFormatted: formatMoney(i.unitPriceMinor, currency),
+        totalFormatted: formatMoney(i.totalPriceMinor, currency),
+      })),
+      subtotalFormatted: formatMoney(invoice.subtotalMinor, currency),
+      taxFormatted: formatMoney(invoice.taxAmountMinor, currency),
+      totalFormatted: formatMoney(invoice.totalMinor, currency),
+      paidFormatted: formatMoney(invoice.paidAmountMinor, currency),
+      balanceFormatted: formatMoney(invoice.balanceDueMinor, currency),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -46,9 +70,13 @@ export function InvoiceScreen() {
               <span>تسجيل دفعة محصلة</span>
             </Button>
           )}
+          <Button variant="outline" onClick={handleDownloadPdf} className="gap-2">
+            <Download className="w-4 h-4 text-deep-olive" />
+            <span>تحميل ملف PDF</span>
+          </Button>
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
             <Printer className="w-4 h-4" />
-            <span>طباعة أو حفظ PDF</span>
+            <span>طباعة المستند</span>
           </Button>
         </div>
       </div>

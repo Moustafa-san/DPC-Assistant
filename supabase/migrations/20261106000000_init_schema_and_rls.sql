@@ -347,4 +347,8 @@ ALTER TABLE public.public_tokens ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_tokens_owner_manage" ON public.public_tokens
     FOR ALL USING (auth.uid() = owner_id) WITH CHECK (auth.uid() = owner_id);
 
+-- Public can read unexpired, unrevoked tokens for validating share links
+CREATE POLICY "public_tokens_read_valid" ON public.public_tokens
+    FOR SELECT USING (expires_at > NOW() AND revoked_at IS NULL);
+
 CREATE INDEX IF NOT EXISTS idx_public_tokens_hash ON public.public_tokens(token_hash);

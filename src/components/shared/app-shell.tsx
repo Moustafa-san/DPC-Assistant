@@ -23,7 +23,9 @@ import {
   Menu,
   X,
   BookOpen,
+  LogOut,
 } from "lucide-react";
+import { useAuthStore } from "@/lib/store/auth-store";
 
 interface AppShellProps {
   children?: React.ReactNode;
@@ -32,6 +34,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, activeTab: propActiveTab, onTabChange }: AppShellProps) {
+  const { user, logout } = useAuthStore();
   const [locale, setLocale] = useState<Locale>("ar");
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -131,6 +134,29 @@ export function AppShell({ children, activeTab: propActiveTab, onTabChange }: Ap
               <Languages className="w-4 h-4 text-muted-bronze" />
               <span>{locale === "ar" ? "English" : "العربية"}</span>
             </Button>
+
+            {user && (
+              <div className="flex items-center gap-2 border-s border-border-subtle ps-2 sm:ps-3">
+                <div className="hidden md:flex flex-col text-end">
+                  <span className="text-xs font-semibold text-warm-charcoal truncate max-w-[130px]">
+                    {user.fullName || user.email.split("@")[0]}
+                  </span>
+                  <span className="text-[10px] text-text-secondary truncate max-w-[130px]">
+                    {user.email}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => logout()}
+                  title="تسجيل الخروج"
+                  aria-label="تسجيل الخروج"
+                  className="p-2 text-text-secondary hover:text-status-error min-touch-target"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>

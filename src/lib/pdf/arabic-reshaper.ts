@@ -105,3 +105,5 @@ export function reverseForVisualLTR(text: string): string {
   // Simple word-level or character-level bidi reverser for shaped Arabic runs
   return Array.from(text).reverse().join("");
 }
+
+export const reshapeArabicText = reshapeArabic;

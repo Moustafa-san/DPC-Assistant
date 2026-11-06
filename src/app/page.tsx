@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AppShell } from "@/components/shared/app-shell";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney } from "@/lib/format/intl";
+import { useAuthStore } from "@/lib/store/auth-store";
+import { AuthScreen } from "@/components/auth/AuthScreen";
 import {
   FileText,
   Calculator,
@@ -17,9 +18,9 @@ import {
   ShieldCheck,
   Sparkles,
   ArrowRight,
-  Sun,
-  Coins,
   CheckCircle,
+  LogIn,
+  Camera,
 } from "lucide-react";
 
 // Tool & Business Screens
@@ -36,17 +37,20 @@ import { BusinessDashboardScreen } from "@/components/screens/BusinessDashboardS
 import { SopScreen } from "@/components/screens/SopScreen";
 
 export default function HomePage() {
+  const { user, initialize, isInitialized } = useAuthStore();
   const [activeTab, setActiveTab] = useState("home");
-  const [selectedCurrency, setSelectedCurrency] = useState<"EGP" | "USD" | "SAR" | "AED">("EGP");
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  const sampleAmountMinor = BigInt(6000000); // 60,000 EGP in minor units (Piastres)
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
 
   const tools = [
     {
       id: "brief",
       name: "Brief Builder",
       nameAr: "منشئ البريف",
-      descAr: "جمع متطلبات وتفضيلات العميل برابط مشاركة آمن ومحدد الصلاحية.",
+      descAr: "جمع متطلبات وتفضيلات العميل برابط مشاركة مشفر ومحدد الصلاحية ومحمي بمعدل 30 طلباً/دقيقة.",
       icon: FileText,
       badge: "أداة 1",
     },
@@ -54,7 +58,7 @@ export default function HomePage() {
       id: "cost",
       name: "ProCost",
       nameAr: "التسعير الذكي",
-      descAr: "حساب التكاليف بدقة وتوليد نسختي عرض سعر: داخلية وللعميل دون كشف الهامش.",
+      descAr: "حساب التكاليف وتوليد نسختي عرض سعر: داخلية للمصور وللعميل مع حجب التكلفة وهوامش الربح الداخلية.",
       icon: Calculator,
       badge: "أداة 2",
     },
@@ -62,7 +66,7 @@ export default function HomePage() {
       id: "shotlist",
       name: "Pro Shotlist",
       nameAr: "قائمة اللقطات",
-      descAr: "قوالب تصوير احترافية، جرد المعدات، والعمل دون اتصال في موقع التصوير.",
+      descAr: "قوالب تصوير سينمائية، جرد المعدات، والعمل دون اتصال في موقع التصوير مع دمج تجميعي آمن.",
       icon: Film,
       badge: "أداة 3",
     },
@@ -70,7 +74,7 @@ export default function HomePage() {
       id: "storage",
       name: "Storage Calculator",
       nameAr: "حاسبة التخزين",
-      descAr: "حساب مساحات الفيديو الخام والصور، الاحتياطي، وحساب عدد كروت الذاكرة.",
+      descAr: "حساب دقيق بالفورميلا العشرية وسعات الفيديو الخام، وهوامش الأمان وتوزيع كروت الذاكرة.",
       icon: HardDrive,
       badge: "أداة 4",
     },
@@ -78,7 +82,7 @@ export default function HomePage() {
       id: "palette",
       name: "Cine Palette",
       nameAr: "لوحة الألوان السينمائية",
-      descAr: "استخراج الألوان، نسب التوزيع 60/30/10، وتصدير بطاقات الألوان وملفات LUT (.cube).",
+      descAr: "استخراج نسب التوزيع اللوني 60/30/10 وتوليد ملفات معالجة ألوان 3D LUT (.cube) الاحترافية.",
       icon: Palette,
       badge: "أداة 5",
     },
@@ -86,7 +90,7 @@ export default function HomePage() {
       id: "calendar",
       name: "Calendar & Order Sheet",
       nameAr: "التقويم وورقة الأوردر",
-      descAr: "تنظيم مواعيد التصوير، ورقة الأوردر، وحساب مواقيت شروق وغروب الشمس بخوارزميات NOAA.",
+      descAr: "تنظيم مواعيد التصوير، ورقة الأوردر، وحساب مواقيت الشروق والغروب والساعة الذهبية بمعادلات NOAA.",
       icon: CalendarDays,
       badge: "أداة 6",
     },
@@ -94,12 +98,226 @@ export default function HomePage() {
       id: "invoice",
       name: "Pro Invoice",
       nameAr: "الفواتير والتحصيل",
-      descAr: "فواتير ثنائية اللغة، ترقيم ذري، دفعات جزئية مستقلة، وترحيل فوري لدفتر الدخل.",
+      descAr: "فواتير احترافية، ترقيم ذري، دفعات مجزأة مستقلة بمفاتيح منع تكرار، وتوليد مباشر لملف PDF عربي.",
       icon: Receipt,
       badge: "أداة 7",
     },
   ];
 
+  // 1. Loading State
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-warm-ivory text-warm-charcoal gap-3">
+        <div className="w-12 h-12 rounded-xl bg-deep-olive flex items-center justify-center text-warm-ivory animate-pulse shadow-md">
+          <Camera className="w-6 h-6" />
+        </div>
+        <p className="font-alexandria font-medium text-sm text-text-secondary">
+          جاري تهيئة مساحة عمل مساعد المصور...
+        </p>
+      </div>
+    );
+  }
+
+  // 2. Unauthenticated State -> Strict Landing Page (ADR-012)
+  if (!user) {
+    return (
+      <div className="min-h-screen flex flex-col bg-warm-ivory text-warm-charcoal">
+        {/* Public Header */}
+        <header className="sticky top-0 z-40 w-full border-b border-border-subtle bg-soft-ivory/95 backdrop-blur-sm px-4 lg:px-8 py-3">
+          <div className="flex items-center justify-between mx-auto max-w-7xl">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-deep-olive flex items-center justify-center text-warm-ivory shadow-xs">
+                <Camera className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="font-alexandria font-semibold text-lg leading-tight tracking-tight text-warm-charcoal">
+                  مساعد المصور
+                </h1>
+                <p className="text-xs text-text-secondary hidden sm:block">
+                  Photographer Assistant — Studio Operating System
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="hidden md:inline-flex">
+                GPL-3.0 Open Source
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAuthModal(true)}
+                className="gap-2 font-medium min-touch-target"
+              >
+                <LogIn className="w-4 h-4 text-deep-olive" />
+                <span>تسجيل الدخول</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowAuthModal(true)}
+                className="gap-2 font-medium min-touch-target"
+              >
+                <span>ابدأ الآن مجاناً</span>
+                <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {/* Public Hero & Value Proposition */}
+        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
+          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-soft-ivory via-warm-ivory to-sand-beige/60 border border-border-subtle p-6 sm:p-12 shadow-sm text-center max-w-4xl mx-auto space-y-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-deep-olive/10 border border-deep-olive/20 text-deep-olive text-xs font-semibold">
+              <Sparkles className="w-4 h-4" />
+              <span>نظام تشغيل الاستوديو المتكامل للمصورين وصناع الفيديو المستقلين</span>
+            </div>
+
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight text-warm-charcoal font-alexandria leading-tight">
+              «من البريف للفلوس» — كل ما تحتاجه لإدارة إنتاجك الفني والتجاري
+            </h2>
+
+            <p className="text-base sm:text-lg text-text-secondary leading-relaxed max-w-2xl mx-auto">
+              تطبيق عملي مفتوح المصدر يربط استقبال رغبات العميل، التسعير الذكي، قائمة اللقطات، حاسبة التخزين، ورقة الأوردر ومواقيت الشمس، والفواتير والتحصيل المالي في منصة واحدة آمنة.
+            </p>
+
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+              <Button size="lg" onClick={() => setShowAuthModal(true)} className="gap-2 font-medium py-3 px-6 text-base shadow-md min-touch-target">
+                <span>ابدأ إنشاء مشروعك الأول الآن</span>
+                <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+              </Button>
+              <Button variant="outline" size="lg" onClick={() => setShowAuthModal(true)} className="gap-2 py-3 px-6 text-base min-touch-target">
+                <LogIn className="w-4 h-4 text-muted-bronze" />
+                <span>تسجيل دخول الاستوديو</span>
+              </Button>
+            </div>
+
+            <div className="pt-4 flex flex-wrap items-center justify-center gap-6 text-xs text-text-secondary">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-status-success" /> بدون اشتراكات أو عمولات
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-status-success" /> خصوصية تامة وصفر تتبع
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-status-success" /> جاهز للعمل الميداني دون إنترنت
+              </span>
+            </div>
+          </section>
+
+          {/* The Operational Backbone */}
+          <section className="space-y-4 text-center">
+            <h3 className="text-2xl font-bold font-alexandria text-warm-charcoal">
+              مسار العمل المتصل (The Operational Backbone)
+            </h3>
+            <p className="text-sm text-text-secondary max-w-xl mx-auto">
+              سلسلة إنتاجية متماسكة تنقل المصور بسلاسة من الخطوة الأولى حتى اكتمال التحصيل المالي:
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3 pt-4">
+              {[
+                { label: "1. البريف الفني" },
+                { label: "2. التسعير الذكي" },
+                { label: "3. قائمة اللقطات" },
+                { label: "4. وسائط التخزين" },
+                { label: "5. الألوان السينمائية" },
+                { label: "6. مواقيت الشمس" },
+                { label: "7. الفاتورة والتحصيل" },
+                { label: "8. علاقات العملاء" },
+                { label: "9. مؤشرات الاستوديو" },
+              ].map((step, idx) => (
+                <div
+                  key={idx}
+                  className="bg-soft-ivory border border-border-subtle rounded-xl p-3 text-center text-xs font-semibold text-warm-charcoal shadow-xs"
+                >
+                  {step.label}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* The 7 Core Tools Overview */}
+          <section className="space-y-6">
+            <div className="text-center space-y-2">
+              <h3 className="text-2xl font-bold font-alexandria text-warm-charcoal">
+                الأدوات السبع المتخصصة
+              </h3>
+              <p className="text-sm text-text-secondary">
+                أدوات برمجية دقيقة مصممة بلغة ومعايير صناعة التصوير والسينما:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {tools.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <Card key={tool.id} className="bg-soft-ivory border-border-subtle hover:border-deep-olive/40 transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="w-10 h-10 rounded-lg bg-deep-olive/10 flex items-center justify-center text-deep-olive">
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <Badge variant="secondary">{tool.badge}</Badge>
+                      </div>
+                      <CardTitle className="text-lg mt-3">{tool.nameAr}</CardTitle>
+                      <CardDescription className="text-xs text-text-secondary">{tool.name}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-text-secondary leading-relaxed">{tool.descAr}</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Security & Architectural Invariants Banner */}
+          <section className="rounded-xl border border-border-subtle bg-soft-ivory p-6 sm:p-8 space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-deep-olive" />
+              <h4 className="font-alexandria font-bold text-lg text-warm-charcoal">
+                قواعد النزاهة الهندسية والأمنية الصارمة
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-text-secondary">
+              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
+                <span className="font-semibold block text-warm-charcoal mb-1">منع الفاصلة العائمة:</span>
+                حساب وتخزين كافة الأموال بوحدات العملة الصغرى الصحيحة (BIGINT) دون أي خطأ تقريبي.
+              </div>
+              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
+                <span className="font-semibold block text-warm-charcoal mb-1">عزل البيانات (RLS):</span>
+                تفعيل أمان مستوى الصفوف على كافة جداول قاعدة البيانات (15 جدولاً علائقياً).
+              </div>
+              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
+                <span className="font-semibold block text-warm-charcoal mb-1">المزامنة دون اتصال:</span>
+                طابور عمليات معزول للحسابات مع حظر صريح لتجاوزات الكتابة فوق الفواتير المالية (No LWW).
+              </div>
+              <div className="p-3 rounded-lg bg-warm-ivory/60 border border-border-subtle/50">
+                <span className="font-semibold block text-warm-charcoal mb-1">توليد PDF عربي:</span>
+                محرك مدمج لتوليد ملفات PDF عربية بتشكيل حروف متصل وخطوط مضمنة.
+              </div>
+            </div>
+          </section>
+        </main>
+
+        {/* Public Footer */}
+        <footer className="border-t border-border-subtle bg-soft-ivory py-6 px-4 text-center text-xs text-text-secondary">
+          <p>
+            مشروع مساعد المصور (Photographer Assistant) — مرخص برخصة البرمجيات الحرة العامة GNU General Public License v3.0 (GPL-3.0).
+          </p>
+        </footer>
+
+        {/* Auth Modal Screen */}
+        {showAuthModal && (
+          <AuthScreen
+            onSuccess={() => setShowAuthModal(false)}
+            onCancel={() => setShowAuthModal(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // 3. Authenticated State -> Protected Studio Workspace
   return (
     <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
       {activeTab === "brief" && <BriefScreen />}
@@ -116,29 +334,29 @@ export default function HomePage() {
 
       {activeTab === "home" && (
         <div className="space-y-10">
-          {/* Hero Section */}
+          {/* Studio Welcome & Quick Start */}
           <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-soft-ivory via-warm-ivory to-sand-beige/60 border border-border-subtle p-6 sm:p-10 shadow-sm">
             <div className="max-w-3xl space-y-4">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-deep-olive/10 border border-deep-olive/20 text-deep-olive text-xs font-semibold">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Gate 5 Features — نظام التشغيل المتكامل</span>
+                <span>مساحة العمل المحمية — استوديو المصور</span>
               </div>
 
               <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-warm-charcoal font-alexandria leading-tight">
-                نظام تشغيل متكامل للمصور المستقل وصانع الفيديو
+                مرحباً بك، {user.fullName || user.email}
               </h2>
 
               <p className="text-base sm:text-lg text-text-secondary leading-relaxed">
-                من البريف للفلوس — مسار عمل متصل يربط استقبال رغبات العميل، والتسعير، وقائمة اللقطات، ورقة الأوردر، والفواتير، ومتابعة الأرباح في واجهة واحدة موحدة.
+                مسار إنتاجك الفني والتجاري «من البريف للفلوس» جاهز ومترابط. يمكنك استئناف العمل على مشروعك الحالي أو بدء أوردر جديد عبر الأدوات السبع.
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
-                <Button size="lg" onClick={() => setActiveTab("brief")} className="gap-2 font-medium">
-                  <span>فتح مشروع العينة المكتمل</span>
+                <Button size="lg" onClick={() => setActiveTab("brief")} className="gap-2 font-medium min-touch-target">
+                  <span>فتح البريف (Brief Builder)</span>
                   <ArrowRight className="w-4 h-4 rtl:rotate-180" />
                 </Button>
-                <Button variant="outline" size="lg" onClick={() => setActiveTab("cost")} className="gap-2">
-                  <span>استعراض التسعير (ProCost)</span>
+                <Button variant="outline" size="lg" onClick={() => setActiveTab("cost")} className="gap-2 min-touch-target">
+                  <span>حاسبة التسعير (ProCost)</span>
                 </Button>
               </div>
             </div>
@@ -175,7 +393,7 @@ export default function HomePage() {
                 <button
                   key={idx}
                   onClick={() => setActiveTab(step.id)}
-                  className="bg-soft-ivory border border-border-subtle rounded-lg p-2.5 text-center text-xs font-semibold text-warm-charcoal shadow-2xs hover:border-deep-olive hover:bg-sand-beige/40 transition-colors cursor-pointer"
+                  className="bg-soft-ivory border border-border-subtle rounded-lg p-2.5 text-center text-xs font-semibold text-warm-charcoal shadow-2xs hover:border-deep-olive hover:bg-sand-beige/40 transition-colors cursor-pointer min-touch-target"
                 >
                   {step.label}
                 </button>
@@ -187,7 +405,7 @@ export default function HomePage() {
           <section className="space-y-4">
             <div>
               <h3 className="text-xl font-bold text-warm-charcoal font-alexandria">
-                الأدوات السبع الأساسية (The 7 Core Tools)
+                الأدوات السبع الأساسية
               </h3>
               <p className="text-sm text-text-secondary">
                 كافة الأدوات السبع تعمل بكامل وظائفها وبياناتها التفاعلية المترابطة:
@@ -198,28 +416,28 @@ export default function HomePage() {
               {tools.map((tool) => {
                 const Icon = tool.icon;
                 return (
-                  <Card key={tool.id} className="flex flex-col justify-between hover:border-deep-olive transition-colors">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="w-10 h-10 rounded-lg bg-deep-olive/10 text-deep-olive flex items-center justify-center">
-                          <Icon className="w-5 h-5" />
-                        </div>
+                  <Card key={tool.id} className="flex flex-col justify-between bg-soft-ivory border-border-subtle">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
                         <Badge variant="secondary">{tool.badge}</Badge>
+                        <div className="w-8 h-8 rounded-lg bg-deep-olive/10 flex items-center justify-center text-deep-olive">
+                          <Icon className="w-4 h-4" />
+                        </div>
                       </div>
-                      <CardTitle className="text-lg">{tool.nameAr}</CardTitle>
-                      <p className="text-xs font-mono text-muted-bronze">{tool.name}</p>
+                      <CardTitle className="text-lg mt-2">{tool.nameAr}</CardTitle>
+                      <CardDescription className="text-xs text-text-secondary">{tool.name}</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-2">
-                      <CardDescription>{tool.descAr}</CardDescription>
+                    <CardContent>
+                      <p className="text-sm text-text-secondary leading-relaxed">{tool.descAr}</p>
                     </CardContent>
-                    <CardFooter className="pt-3">
+                    <CardFooter className="pt-2 border-t border-border-subtle/50">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => setActiveTab(tool.id)}
-                        className="w-full justify-between text-xs font-semibold"
+                        className="w-full gap-1.5 font-medium min-touch-target"
                       >
-                        <span>فتح الأداة</span>
+                        <span>فتح {tool.nameAr}</span>
                         <ArrowRight className="w-3.5 h-3.5 rtl:rotate-180" />
                       </Button>
                     </CardFooter>
@@ -229,105 +447,91 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* Verification Cards */}
+          {/* Business Layer Highlights */}
           <section className="space-y-4">
-            <h3 className="text-xl font-bold text-warm-charcoal font-alexandria">
-              القواعد الحاكمة لمنع الأخطاء المحاسبية والتكرار
-            </h3>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-warm-charcoal font-alexandria">
+                  طبقة إدارة الأعمال (Business Operations)
+                </h3>
+                <p className="text-sm text-text-secondary">
+                  أدوات احترافية لحساب الأرباح، متابعة العملاء، وإدارة المهام الميدانية:
+                </p>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card
+                className="bg-soft-ivory border-border-subtle hover:border-deep-olive cursor-pointer transition-colors"
+                onClick={() => setActiveTab("crm")}
+              >
                 <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2 text-deep-olive mb-1">
-                    <Coins className="w-5 h-5" />
-                    <CardTitle className="text-base">تنسيق العملات الصارم</CardTitle>
-                  </div>
-                  <CardDescription>
-                    تخزين بوحدات العملة الصغرى (Integer Minor Units) دون أخطاء عائمة.
-                  </CardDescription>
+                  <Badge variant="outline" className="w-fit text-xs">CRM</Badge>
+                  <CardTitle className="text-base mt-2">إدارة العملاء والصفقات</CardTitle>
+                  <CardDescription>سجل شامل لبيانات العملاء، تواريخ المناسبات، وتاريخ المعاملات.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    {(["EGP", "USD", "SAR", "AED"] as const).map((curr) => (
-                      <Button
-                        key={curr}
-                        size="sm"
-                        variant={selectedCurrency === curr ? "default" : "outline"}
-                        onClick={() => setSelectedCurrency(curr)}
-                        className="text-xs h-8 px-2.5"
-                      >
-                        {curr}
-                      </Button>
-                    ))}
-                  </div>
-                  <div className="p-3 bg-warm-ivory rounded-lg border border-border-subtle">
-                    <div className="text-xs text-text-secondary">المبلغ المخزن برمجياً:</div>
-                    <div className="font-mono text-xs text-warm-charcoal">
-                      {sampleAmountMinor.toString()} minor units
-                    </div>
-                    <div className="text-xs text-text-secondary mt-2">التنسيق عبر Intl:</div>
-                    <div className="text-lg font-bold text-deep-olive font-alexandria">
-                      <span className="numeric-ltr">{formatMoney(sampleAmountMinor, selectedCurrency, "ar")}</span>
-                    </div>
-                  </div>
-                </CardContent>
               </Card>
 
-              <Card>
+              <Card
+                className="bg-soft-ivory border-border-subtle hover:border-deep-olive cursor-pointer transition-colors"
+                onClick={() => setActiveTab("tasks")}
+              >
                 <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2 text-muted-bronze mb-1">
-                    <Sun className="w-5 h-5" />
-                    <CardTitle className="text-base">مرجع شمس القاهرة الفلكي</CardTitle>
-                  </div>
-                  <CardDescription>
-                    خوارزميات NOAA الفلكية الصافية لـ Africa/Cairo.
-                  </CardDescription>
+                  <Badge variant="outline" className="w-fit text-xs">Checklists</Badge>
+                  <CardTitle className="text-base mt-2">المهام وقوائم التحقق</CardTitle>
+                  <CardDescription>متابعة مراحل الإنتاج، تجهيز الشنطة والعدسات قبل الأوردر وبعده.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-2.5 text-xs">
-                  <div className="p-2.5 bg-warm-ivory rounded-lg border border-border-subtle flex justify-between items-center">
-                    <span className="text-text-secondary">شروق الشمس (Sunrise):</span>
-                    <span className="font-bold text-warm-charcoal font-mono">06:12 صباحاً</span>
-                  </div>
-                  <div className="p-2.5 bg-warm-ivory rounded-lg border border-border-subtle flex justify-between items-center">
-                    <span className="text-text-secondary">غروب الشمس (Sunset):</span>
-                    <span className="font-bold text-warm-charcoal font-mono">17:05 مساءً</span>
-                  </div>
-                  <div className="p-2.5 bg-warm-ivory rounded-lg border border-border-subtle flex justify-between items-center">
-                    <span className="text-text-secondary">الساعة الذهبية:</span>
-                    <span className="font-mono text-deep-olive font-bold">16:34 — 17:15</span>
-                  </div>
-                </CardContent>
               </Card>
 
-              <Card>
+              <Card
+                className="bg-soft-ivory border-border-subtle hover:border-deep-olive cursor-pointer transition-colors"
+                onClick={() => setActiveTab("business")}
+              >
                 <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2 text-deep-olive mb-1">
-                    <ShieldCheck className="w-5 h-5" />
-                    <CardTitle className="text-base">جاهزية الأمان والعمل الميداني</CardTitle>
-                  </div>
-                  <CardDescription>
-                    حماية كاملة، عزل للحسابات، وجاهزية تامة للعمل دون اتصال.
-                  </CardDescription>
+                  <Badge variant="outline" className="w-fit text-xs">Analytics</Badge>
+                  <CardTitle className="text-base mt-2">مؤشرات الأداء والإهلاك</CardTitle>
+                  <CardDescription>إهلاك المعدات، قيمة ساعة العمل، ومقارنة الشراء مقابل الاستئجار.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-2 text-xs text-text-secondary">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
-                    <span>RLS على كافة جداول قاعدة البيانات (12 جدولاً).</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
-                    <span>الروابط العامة مشفرة وبمحدد 30 طلباً/دقيقة.</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
-                    <span>طابور العمليات معزول ومحصن من التسريب.</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
-                    <span>توليد ملفات 3D LUT (.cube) القياسية فورياً.</span>
-                  </div>
-                </CardContent>
               </Card>
+
+              <Card
+                className="bg-soft-ivory border-border-subtle hover:border-deep-olive cursor-pointer transition-colors"
+                onClick={() => setActiveTab("sop")}
+              >
+                <CardHeader className="pb-2">
+                  <Badge variant="outline" className="w-fit text-xs">SOP Guide</Badge>
+                  <CardTitle className="text-base mt-2">دليل الإجراءات القياسي</CardTitle>
+                  <CardDescription>بروتوكولات التصوير المعتمدة ومعايير تسليم المواد والنسخ الاحتياطي.</CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          </section>
+
+          {/* Security & System Status */}
+          <section className="rounded-xl border border-border-subtle bg-soft-ivory p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-deep-olive" />
+              <h4 className="font-alexandria font-bold text-lg text-warm-charcoal">
+                حالة النظام وجاهزية الأمان
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-text-secondary">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-status-success shrink-0" />
+                <span>RLS مفعل ومحكم على كافة جداول قاعدة البيانات (15 جدولاً علائقياً).</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-status-success shrink-0" />
+                <span>الروابط العامة مشفرة بـ 256 بت وبمحدد 30 طلباً/دقيقة.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-status-success shrink-0" />
+                <span>طابور العمليات دون اتصال مستدام ومحصن بالحسابات.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-status-success shrink-0" />
+                <span>توليد وتصدير ملفات PDF عربية و3D LUT (.cube) قياسية.</span>
+              </div>
             </div>
           </section>
         </div>
