@@ -73,4 +73,18 @@ describe("Live PostgreSQL RLS Schema Audit across all 15 Tables", () => {
     expect(sqlContent).toContain("expires_at > NOW()");
     expect(sqlContent).toContain("revoked_at IS NULL");
   });
+
+  it("verifies that live penetration test suite covers auth.users, child tables, and tenancy invariants", () => {
+    const testSqlPath = path.resolve(process.cwd(), "supabase/tests/rls_security_live.sql");
+    const testSql = fs.readFileSync(testSqlPath, "utf-8");
+
+    // Must seed auth.users for foreign key integrity
+    expect(testSql).toContain("INSERT INTO auth.users");
+    // Must test child table cross-tenant injection
+    expect(testSql).toContain("INSERT INTO public.invoice_items");
+    // Must test tenant B isolation
+    expect(testSql).toContain("request.jwt.claim.sub");
+    // Must cleanly roll back all test mutations
+    expect(testSql).toContain("ROLLBACK;");
+  });
 });

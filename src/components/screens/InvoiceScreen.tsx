@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useProjectStore } from "@/lib/store/project-store";
-import { formatMoney, formatDate } from "@/lib/format/intl";
+import { formatMoney, formatDate, parseInputToMinorUnits } from "@/lib/format/intl";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,16 +12,23 @@ import { ArabicInvoicePdfGenerator } from "@/lib/pdf/invoice-pdf-generator";
 export function InvoiceScreen() {
   const { invoice, payments, recordPayment, client, currency } = useProjectStore();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentAmountEgp, setPaymentAmountEgp] = useState("25014");
+  const [paymentAmountStr, setPaymentAmountStr] = useState("25014");
   const [paymentMethod, setPaymentMethod] = useState<"instapay" | "bank_transfer" | "cash">("instapay");
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const handleAddPayment = (e: React.FormEvent) => {
     e.preventDefault();
-    const amountNum = parseFloat(paymentAmountEgp) || 0;
-    if (amountNum > 0) {
-      const amountMinor = BigInt(Math.round(amountNum * 100)); // EGP to Piastres
+    setPaymentError(null);
+    try {
+      const amountMinor = parseInputToMinorUnits(paymentAmountStr);
+      if (amountMinor <= 0n) {
+        setPaymentError("يجب أن يكون مبلغ الدفعة أكبر من الصفر");
+        return;
+      }
       recordPayment(amountMinor, paymentMethod);
       setShowPaymentModal(false);
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : "خطأ في قراءة المبلغ");
     }
   };
 
@@ -93,16 +100,23 @@ export function InvoiceScreen() {
             </CardHeader>
             <form onSubmit={handleAddPayment}>
               <CardContent className="space-y-4">
+                {paymentError && (
+                  <div className="p-2.5 rounded-lg bg-status-error-bg border border-status-error/30 text-status-error text-xs">
+                    {paymentError}
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs font-semibold text-text-secondary block mb-1">
-                    المبلغ المحصل بالجنيه (EGP):
+                    المبلغ المحصل بعملة الفاتورة ({currency}):
                   </label>
                   <input
-                    type="number"
-                    step="1"
-                    value={paymentAmountEgp}
-                    onChange={(e) => setPaymentAmountEgp(e.target.value)}
+                    type="text"
+                    inputMode="decimal"
+                    value={paymentAmountStr}
+                    onChange={(e) => setPaymentAmountStr(e.target.value)}
                     className="w-full p-2.5 rounded-lg border border-border-subtle bg-warm-ivory text-sm font-mono font-bold"
+                    placeholder="مثال: 25014 أو 25014.50"
                     required
                   />
                   <span className="text-2xs text-text-secondary">

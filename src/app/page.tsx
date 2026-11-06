@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { useProjectStore } from "@/lib/store/project-store";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import {
   FileText,
@@ -38,12 +39,19 @@ import { SopScreen } from "@/components/screens/SopScreen";
 
 export default function HomePage() {
   const { user, initialize, isInitialized } = useAuthStore();
+  const { loadForUser } = useProjectStore();
   const [activeTab, setActiveTab] = useState("home");
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (user?.id) {
+      loadForUser(user.id);
+    }
+  }, [user?.id, loadForUser]);
 
   const tools = [
     {

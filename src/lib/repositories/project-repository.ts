@@ -1,7 +1,8 @@
 import { getBrowserSupabaseClient } from "../supabase/client";
 import { getSupabaseEnv } from "../supabase/config";
-import { OfflineQueueManager, OfflineOperation } from "./offline-queue";
+import { OfflineQueueManager, OfflineOperation, EntityType } from "./offline-queue";
 import { reconcileOfflineOperation } from "../offline/reconciliation";
+import { idbGet, idbSet } from "./indexed-db";
 
 export interface StoredProject {
   id: string;
@@ -18,9 +19,25 @@ export interface StoredProject {
 
 const LOCAL_PROJECTS_KEY = "dpc_assistant_projects_";
 
+const ENTITY_TABLE_MAP: Record<EntityType, string> = {
+  project: "projects",
+  client: "clients",
+  brief: "briefs",
+  quote: "quotes",
+  quote_item: "quote_items",
+  shotlist: "shotlists",
+  shot: "shots",
+  palette: "palettes",
+  invoice: "invoices",
+  invoice_item: "invoice_items",
+  payment: "payments",
+  income_ledger: "income_ledger",
+  asset: "assets",
+};
+
 /**
- * Enterprise Repository for Projects and Workflows.
- * Bridges Supabase Cloud PostgreSQL with the durable Offline Queue and local storage.
+ * Enterprise Repository for Projects and Studio Operations.
+ * Integrates IndexedDB durable local persistence with Supabase PostgreSQL cloud sync.
  */
 export class ProjectRepository {
   private queueManager: OfflineQueueManager;
@@ -29,18 +46,20 @@ export class ProjectRepository {
     this.queueManager = queueManager ?? new OfflineQueueManager();
   }
 
-  private getLocalStorageKey(userId: string): string {
+  private getStorageKey(userId: string): string {
     return `${LOCAL_PROJECTS_KEY}${userId}`;
   }
 
   /**
-   * Loads all projects for an authenticated user, falling back to durable offline storage.
+   * Loads projects for an authenticated user, consulting Supabase cloud first,
+   * falling back to durable IndexedDB storage.
    */
   public async loadProjects(userId: string): Promise<StoredProject[]> {
     const { isConfigured } = getSupabaseEnv();
+    const isOnline = typeof navigator !== "undefined" ? navigator.onLine : false;
 
-    // 1. If Supabase is configured and online, attempt cloud fetch
-    if (isConfigured && typeof navigator !== "undefined" && navigator.onLine) {
+    // 1. Fetch from Supabase Cloud if configured and online
+    if (isConfigured && isOnline) {
       try {
         const supabase = getBrowserSupabaseClient();
         const { data, error } = await supabase
@@ -63,58 +82,56 @@ export class ProjectRepository {
             data: row,
           }));
 
-          // Cache locally for offline resilience
-          if (typeof localStorage !== "undefined") {
-            localStorage.setItem(this.getLocalStorageKey(userId), JSON.stringify(mapped));
-          }
-
+          // Cache in IndexedDB for resilient offline operations
+          await idbSet(this.getStorageKey(userId), mapped);
           return mapped;
         }
       } catch (err) {
-        console.warn("[ProjectRepository] Supabase fetch failed, falling back to local storage:", err);
+        console.warn("[ProjectRepository] Cloud fetch error, reading IndexedDB:", err);
       }
     }
 
-    // 2. Fallback to durable local storage
-    if (typeof localStorage !== "undefined") {
-      try {
-        const cached = localStorage.getItem(this.getLocalStorageKey(userId));
-        if (cached) {
-          return JSON.parse(cached) as StoredProject[];
-        }
-      } catch (err) {
-        console.error("[ProjectRepository] Error reading local projects:", err);
+    // 2. Read from persistent IndexedDB
+    try {
+      const cached = await idbGet<StoredProject[]>(this.getStorageKey(userId));
+      if (cached && Array.isArray(cached)) {
+        return cached;
       }
+    } catch (err) {
+      console.error("[ProjectRepository] IndexedDB read error:", err);
     }
 
     return [];
   }
 
   /**
-   * Saves or updates a project. If offline, enqueues the mutation into the durable offline queue.
+   * Saves or updates a project with optimistic IndexedDB write through and cloud synchronization.
    */
   public async saveProject(project: StoredProject): Promise<StoredProject> {
     const { isConfigured } = getSupabaseEnv();
     const isOnline = typeof navigator !== "undefined" ? navigator.onLine : false;
 
-    // Update local cache immediately (Optimistic UI)
-    if (typeof localStorage !== "undefined") {
-      try {
-        const key = this.getLocalStorageKey(project.ownerId);
-        const existing = (JSON.parse(localStorage.getItem(key) || "[]") as StoredProject[]) || [];
-        const index = existing.findIndex((p) => p.id === project.id);
-        if (index >= 0) {
-          existing[index] = { ...project, updatedAt: new Date().toISOString() };
-        } else {
-          existing.unshift({ ...project, updatedAt: new Date().toISOString() });
-        }
-        localStorage.setItem(key, JSON.stringify(existing));
-      } catch (err) {
-        console.error("[ProjectRepository] Local cache save error:", err);
+    // 1. Write to local IndexedDB storage immediately (Optimistic UI)
+    try {
+      const key = this.getStorageKey(project.ownerId);
+      const existing = (await idbGet<StoredProject[]>(key)) || [];
+      const index = existing.findIndex((p) => p.id === project.id);
+      const updated: StoredProject = {
+        ...project,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (index >= 0) {
+        existing[index] = updated;
+      } else {
+        existing.unshift(updated);
       }
+      await idbSet(key, existing);
+    } catch (err) {
+      console.warn("[ProjectRepository] IndexedDB save error:", err);
     }
 
-    // Attempt cloud sync if online and configured
+    // 2. Cloud Upsert if online and configured
     if (isConfigured && isOnline) {
       try {
         const supabase = getBrowserSupabaseClient();
@@ -136,13 +153,13 @@ export class ProjectRepository {
             updatedAt: new Date().toISOString(),
           };
         }
-        console.warn("[ProjectRepository] Supabase upsert error, enqueuing offline mutation:", error);
+        console.warn("[ProjectRepository] Supabase upsert error, queuing offline operation:", error);
       } catch (err) {
-        console.warn("[ProjectRepository] Network error during upsert, enqueuing offline:", err);
+        console.warn("[ProjectRepository] Network error, queuing offline operation:", err);
       }
     }
 
-    // If unconfigured or offline, queue operation durably
+    // 3. Queue offline operation durably if cloud call failed or offline
     const offlineOp: OfflineOperation = {
       operationId: `op-proj-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userId: project.ownerId,
@@ -160,25 +177,33 @@ export class ProjectRepository {
   }
 
   /**
-   * Flushes and syncs pending offline operations when connection is re-established.
+   * Flushes and syncs pending offline mutations across all 13 entity types with strict error validation.
    */
-  public async syncPendingQueue(userId: string): Promise<{ synced: number; conflicts: number }> {
+  public async syncPendingQueue(userId: string): Promise<{ synced: number; conflicts: number; failed: number }> {
     const { isConfigured } = getSupabaseEnv();
     if (!isConfigured) {
-      return { synced: 0, conflicts: 0 };
+      return { synced: 0, conflicts: 0, failed: 0 };
     }
 
     const pending = this.queueManager.getPendingOperations(userId);
     let synced = 0;
     let conflicts = 0;
+    let failed = 0;
 
     const supabase = getBrowserSupabaseClient();
 
     for (const op of pending) {
+      const tableName = ENTITY_TABLE_MAP[op.entityType];
+      if (!tableName) {
+        console.error(`[ProjectRepository] Unknown entity type: ${op.entityType}`);
+        failed++;
+        continue;
+      }
+
       try {
-        // Fetch server entity to reconcile
+        // Fetch server entity to detect conflicts
         const { data: serverRow } = await supabase
-          .from(op.entityType === "project" ? "projects" : "shots")
+          .from(tableName)
           .select("*")
           .eq("id", op.entityId)
           .single();
@@ -199,27 +224,37 @@ export class ProjectRepository {
 
         if (resolution.status === "applied" || resolution.status === "merged") {
           // Push reconciled data to Supabase
-          await supabase
-            .from(op.entityType === "project" ? "projects" : "shots")
-            .upsert({
-              id: op.entityId,
-              owner_id: userId,
-              ...resolution.resolvedData,
-              version: resolution.newVersion,
-              updated_at: new Date().toISOString(),
-            });
+          const { error: upsertError } = await supabase.from(tableName).upsert({
+            id: op.entityId,
+            owner_id: userId,
+            ...resolution.resolvedData,
+            version: resolution.newVersion,
+            updated_at: new Date().toISOString(),
+          });
 
-          this.queueManager.markSynced(userId, op.operationId);
-          synced++;
+          // Check error BEFORE marking synced
+          if (upsertError) {
+            console.error(`[ProjectRepository] Supabase rejected sync for ${tableName}:${op.entityId}`, upsertError);
+            this.queueManager.markConflict(userId, op.operationId, upsertError.message);
+            conflicts++;
+          } else {
+            this.queueManager.markSynced(userId, op.operationId);
+            synced++;
+          }
         } else if (resolution.status === "conflict_requires_user_action") {
           this.queueManager.markConflict(userId, op.operationId, resolution.conflictReason || "Conflict");
           conflicts++;
+        } else {
+          failed++;
         }
       } catch (err) {
-        console.error(`[ProjectRepository] Sync error for op ${op.operationId}:`, err);
+        console.error(`[ProjectRepository] Sync network error for op ${op.operationId}:`, err);
+        failed++;
       }
     }
 
-    return { synced, conflicts };
+    return { synced, conflicts, failed };
   }
 }
+
+export const defaultProjectRepository = new ProjectRepository();

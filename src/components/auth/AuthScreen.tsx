@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Camera, Mail, Lock, User, ArrowRight, ShieldCheck, AlertCircle, CheckCircle } from "lucide-react";
+import { Camera, Mail, Lock, User, ArrowRight, AlertCircle, CheckCircle, ShieldAlert } from "lucide-react";
 
 interface AuthScreenProps {
   onSuccess?: () => void;
@@ -18,7 +18,18 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
   const [fullName, setFullName] = useState("");
   const [localSuccessMsg, setLocalSuccessMsg] = useState<string | null>(null);
 
-  const { login, register, loginWithGoogle, resetPassword, isLoading, error, clearError, isMockMode } = useAuthStore();
+  const {
+    login,
+    register,
+    loginWithGoogle,
+    resetPassword,
+    isLoading,
+    error,
+    clearError,
+    isConfigured,
+    confirmationPending,
+    resetConfirmationNotice,
+  } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +49,9 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
     setLocalSuccessMsg(null);
     try {
       await register(email, password, fullName);
-      onSuccess?.();
+      if (!confirmationPending) {
+        onSuccess?.();
+      }
     } catch {
       // Error handled in store
     }
@@ -79,15 +92,18 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
             {tab === "forgot" && "استعادة كلمة المرور"}
           </CardTitle>
           <CardDescription className="text-text-secondary text-sm">
-            {tab === "login" && "أدخل بياناتك للوصول إلى أدواتك ومشاريعك المشفرة"}
+            {tab === "login" && "أدخل بياناتك المعتمدة للوصول إلى مساحة عملك"}
             {tab === "register" && "انضم لمنظومة عمل المصورين المستقلين مجاناً 100%"}
             {tab === "forgot" && "أدخل بريدك الإلكتروني المسجل وسنرسل لك رابط الاستعادة"}
           </CardDescription>
 
-          {isMockMode && (
-            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sand-beige/60 text-xs text-warm-charcoal mx-auto">
-              <ShieldCheck className="w-3.5 h-3.5 text-muted-bronze" />
-              <span>وضع التطوير المحلي (Dev Mode Session)</span>
+          {!isConfigured && (
+            <div className="mt-3 p-3 rounded-lg bg-status-warning-bg border border-status-warning/40 text-status-warning text-xs text-start flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block">إعدادات Supabase غير مكتملة:</span>
+                تطبيق قرار ADR-012 الإلزامي: يُمنع أي تجاوز للمصادقة أو دخول وهمي. يرجى تهيئة NEXT_PUBLIC_SUPABASE_URL وNEXT_PUBLIC_SUPABASE_ANON_KEY في بيئة التشغيل لتمكين الدخول.
+              </div>
             </div>
           )}
         </CardHeader>
@@ -101,6 +117,31 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
             </div>
           )}
 
+          {/* Email Confirmation Pending Banner */}
+          {confirmationPending && (
+            <div className="p-3.5 rounded-lg bg-status-success-bg border border-status-success/30 text-status-success text-xs space-y-1.5">
+              <div className="flex items-center gap-2 font-bold">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>تم إنشاء الحساب بنجاح! يلزم تأكيد البريد الإلكتروني.</span>
+              </div>
+              <p className="text-text-secondary">
+                أرسلنا رابط التحقق إلى بريدك الإلكتروني. يرجى فتح البريد والضغط على الرابط لتأكيد حسابك قبل تسجيل الدخول إلى مساحة العمل.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full mt-2"
+                onClick={() => {
+                  resetConfirmationNotice();
+                  setTab("login");
+                }}
+              >
+                الانتقال لتسجيل الدخول بعد التأكيد
+              </Button>
+            </div>
+          )}
+
           {/* Success Banner */}
           {localSuccessMsg && (
             <div className="p-3 rounded-lg bg-status-success-bg border border-status-success/30 text-status-success text-xs flex items-center gap-2">
@@ -110,14 +151,14 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
           )}
 
           {/* Social Google OAuth Button */}
-          {tab !== "forgot" && (
+          {tab !== "forgot" && !confirmationPending && (
             <div>
               <Button
                 type="button"
                 variant="outline"
                 className="w-full justify-center gap-2.5 py-2.5 bg-soft-ivory hover:bg-sand-beige/30 border-border-subtle text-warm-charcoal min-touch-target"
                 onClick={() => loginWithGoogle()}
-                disabled={isLoading}
+                disabled={isLoading || !isConfigured}
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -152,7 +193,7 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
           )}
 
           {/* Form */}
-          {tab === "login" && (
+          {tab === "login" && !confirmationPending && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-warm-charcoal flex items-center gap-1.5">
@@ -196,13 +237,13 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
                 />
               </div>
 
-              <Button type="submit" disabled={isLoading} className="w-full py-2.5 min-touch-target">
+              <Button type="submit" disabled={isLoading || !isConfigured} className="w-full py-2.5 min-touch-target">
                 {isLoading ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
               </Button>
             </form>
           )}
 
-          {tab === "register" && (
+          {tab === "register" && !confirmationPending && (
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-warm-charcoal flex items-center gap-1.5">
@@ -250,7 +291,7 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
                 />
               </div>
 
-              <Button type="submit" disabled={isLoading} className="w-full py-2.5 min-touch-target">
+              <Button type="submit" disabled={isLoading || !isConfigured} className="w-full py-2.5 min-touch-target">
                 {isLoading ? "جاري إنشاء الحساب..." : "إنشاء حساب مصور جديد"}
               </Button>
             </form>
@@ -273,7 +314,7 @@ export function AuthScreen({ onSuccess, onCancel }: AuthScreenProps) {
                 />
               </div>
 
-              <Button type="submit" disabled={isLoading} className="w-full py-2.5 min-touch-target">
+              <Button type="submit" disabled={isLoading || !isConfigured} className="w-full py-2.5 min-touch-target">
                 {isLoading ? "جاري الإرسال..." : "إرسال رابط استعادة كلمة المرور"}
               </Button>
             </form>

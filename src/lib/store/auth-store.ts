@@ -5,7 +5,8 @@ interface AuthState {
   user: AuthUser | null;
   isLoading: boolean;
   isInitialized: boolean;
-  isMockMode: boolean;
+  isConfigured: boolean;
+  confirmationPending: boolean;
   error: string | null;
 
   initialize: () => Promise<void>;
@@ -15,20 +16,41 @@ interface AuthState {
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  resetConfirmationNotice: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: true,
   isInitialized: false,
-  isMockMode: false,
+  isConfigured: false,
+  confirmationPending: false,
   error: null,
 
   initialize: async () => {
     try {
       set({ isLoading: true, error: null });
-      const { user, isMockMode } = await AuthService.initializeSession();
-      set({ user, isMockMode, isInitialized: true, isLoading: false });
+      const { user, isConfigured } = await AuthService.initializeSession();
+      set({ user, isConfigured, isInitialized: true, isLoading: false });
+
+      // Subscribe to real-time session changes from Supabase
+      if (isConfigured) {
+        AuthService.onAuthStateChange((_event, session) => {
+          if (session?.user) {
+            set({
+              user: {
+                id: session.user.id,
+                email: session.user.email || "",
+                fullName: session.user.user_metadata?.full_name,
+                avatarUrl: session.user.user_metadata?.avatar_url,
+              },
+              confirmationPending: false,
+            });
+          } else {
+            set({ user: null });
+          }
+        });
+      }
     } catch {
       set({ user: null, isInitialized: true, isLoading: false });
     }
@@ -51,8 +73,20 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (email, pass, name) => {
     try {
       set({ isLoading: true, error: null });
-      const user = await AuthService.signUp(email, pass, name);
-      set({ user, isLoading: false });
+      const result = await AuthService.signUp(email, pass, name);
+      if (result.confirmationPending) {
+        set({
+          user: null,
+          confirmationPending: true,
+          isLoading: false,
+        });
+      } else {
+        set({
+          user: result.user,
+          confirmationPending: false,
+          isLoading: false,
+        });
+      }
     } catch (err: unknown) {
       set({
         error: err instanceof Error ? err.message : "فشل إنشاء الحساب",
@@ -95,4 +129,5 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+  resetConfirmationNotice: () => set({ confirmationPending: false }),
 }));

@@ -16,12 +16,40 @@ export function minorToMajor(amountMinor: bigint, currency: SupportedCurrency): 
 }
 
 /**
- * Converts major units to minor units (bigint) safely.
+ * Converts major units to minor units (e.g. 60000 EGP -> 6000000 Piastres).
  */
-export function majorToMinor(amountMajor: number, currency: SupportedCurrency): bigint {
+export function majorToMinor(amountMajor: number, currency: SupportedCurrency = "EGP"): bigint {
   const divisor = CURRENCY_MINOR_DIVISORS[currency];
   return BigInt(Math.round(amountMajor * divisor));
 }
+
+/**
+ * Safely parses user text input (e.g. "2500.50", "2500", "2500,50") directly into BigInt minor units.
+ * ZERO floating-point operations (no parseFloat, no Math.round).
+ */
+export function parseInputToMinorUnits(inputStr: string): bigint {
+  if (!inputStr || typeof inputStr !== "string") {
+    return 0n;
+  }
+
+  const cleaned = inputStr.trim().replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) {
+    throw new Error(`قيمة المبلغ غير صالحة: "${inputStr}". يرجى إدخال أرقام صحيحة أو مع كسر عشري (مثال: 2500 أو 2500.50)`);
+  }
+
+  const parts = cleaned.split(".");
+  const wholePart = BigInt(parts[0]);
+
+  if (parts.length === 1) {
+    return wholePart * 100n;
+  }
+
+  const fractionStr = parts[1].padEnd(2, "0");
+  const fractionPart = BigInt(fractionStr);
+
+  return wholePart * 100n + fractionPart;
+}
+
 
 /**
  * Formats a monetary amount using standard Intl.NumberFormat.

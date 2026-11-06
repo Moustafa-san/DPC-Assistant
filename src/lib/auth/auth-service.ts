@@ -1,5 +1,6 @@
 import { getBrowserSupabaseClient } from "../supabase/client";
 import { getSupabaseEnv } from "../supabase/config";
+import type { Session, Subscription } from "@supabase/supabase-js";
 
 export interface AuthUser {
   id: string;
@@ -8,85 +9,78 @@ export interface AuthUser {
   avatarUrl?: string;
 }
 
-export interface AuthState {
+export interface SignUpResult {
   user: AuthUser | null;
-  isLoading: boolean;
-  error: string | null;
-  isMockMode: boolean; // Indicates if running in offline demo mode without live Supabase
+  confirmationPending: boolean;
 }
 
-// Local storage key for demo session when Supabase is not configured
-const DEMO_AUTH_STORAGE_KEY = "dpc_assistant_demo_user";
-
 /**
- * Production-ready Supabase Auth Service with graceful offline development fallback.
- * Strictly adheres to ADR-012 (Auth-gated entry).
+ * Production-grade Supabase Authentication Service.
+ * Strictly adheres to ADR-012:
+ * - Zero Mock Mode or bypasses.
+ * - Missing Supabase credentials strictly prevents workspace unlock.
+ * - Confirmed session is mandatory before opening workspace.
  */
 export class AuthService {
   /**
-   * Initializes authentication state and registers session listener.
+   * Retrieves active, verified session on boot.
    */
-  public static async initializeSession(): Promise<{ user: AuthUser | null; isMockMode: boolean }> {
+  public static async initializeSession(): Promise<{ user: AuthUser | null; isConfigured: boolean }> {
     const { isConfigured } = getSupabaseEnv();
 
     if (!isConfigured) {
-      // Check if developer has a persisted demo session
-      if (typeof window !== "undefined") {
-        const stored = localStorage.getItem(DEMO_AUTH_STORAGE_KEY);
-        if (stored) {
-          try {
-            const user = JSON.parse(stored) as AuthUser;
-            return { user, isMockMode: true };
-          } catch {
-            localStorage.removeItem(DEMO_AUTH_STORAGE_KEY);
-          }
-        }
-      }
-      return { user: null, isMockMode: true };
+      return { user: null, isConfigured: false };
     }
 
     try {
       const supabase = getBrowserSupabaseClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-      if (session?.user) {
-        return {
-          user: {
-            id: session.user.id,
-            email: session.user.email || "",
-            fullName: session.user.user_metadata?.full_name,
-            avatarUrl: session.user.user_metadata?.avatar_url,
-          },
-          isMockMode: false,
-        };
+      if (error || !session?.user) {
+        return { user: null, isConfigured: true };
       }
-      return { user: null, isMockMode: false };
+
+      return {
+        user: {
+          id: session.user.id,
+          email: session.user.email || "",
+          fullName: session.user.user_metadata?.full_name,
+          avatarUrl: session.user.user_metadata?.avatar_url,
+        },
+        isConfigured: true,
+      };
     } catch (err) {
-      console.error("[AuthService] Error fetching Supabase session:", err);
-      return { user: null, isMockMode: false };
+      console.error("[AuthService] Error initializing Supabase session:", err);
+      return { user: null, isConfigured: true };
     }
   }
 
   /**
-   * Sign In with Email and Password.
+   * Subscribes to real Supabase session events.
+   */
+  public static onAuthStateChange(
+    callback: (event: string, session: Session | null) => void
+  ): { subscription: Subscription } | null {
+    const { isConfigured } = getSupabaseEnv();
+    if (!isConfigured) return null;
+
+    try {
+      const supabase = getBrowserSupabaseClient();
+      const { data } = supabase.auth.onAuthStateChange(callback);
+      return data;
+    } catch (err) {
+      console.error("[AuthService] Failed to bind auth state listener:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Signs in with Email and Password against Supabase Auth.
    */
   public static async signInWithPassword(email: string, password: string): Promise<AuthUser> {
     const { isConfigured } = getSupabaseEnv();
-
     if (!isConfigured) {
-      // Offline/Dev Mock Sign In
-      if (!email || !password || password.length < 6) {
-        throw new Error("بيانات الاعتماد غير صالحة. يجب ألا تقل كلمة المرور عن 6 أحرف.");
-      }
-      const mockUser: AuthUser = {
-        id: "usr-dev-" + Math.abs(email.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)),
-        email,
-        fullName: email.split("@")[0],
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem(DEMO_AUTH_STORAGE_KEY, JSON.stringify(mockUser));
-      }
-      return mockUser;
+      throw new Error("إعدادات Supabase غير مهيأة. الدخول معطل لحماية البيانات.");
     }
 
     const supabase = getBrowserSupabaseClient();
@@ -95,9 +89,9 @@ export class AuthService {
       password,
     });
 
-    if (error || !data.user) {
-      // Generic error message to prevent account enumeration (ASVS Level 2)
-      throw new Error("بيانات الدخول غير صحيحة، أو الحساب غير موجود.");
+    if (error || !data.session || !data.user) {
+      // Generic message to prevent account enumeration (ASVS Level 2)
+      throw new Error("بيانات الاعتماد غير صالحة، أو الحساب غير مؤكد.");
     }
 
     return {
@@ -109,24 +103,12 @@ export class AuthService {
   }
 
   /**
-   * Sign Up with Email, Password, and Full Name.
+   * Signs up a new account. If email confirmation is required, session will be null.
    */
-  public static async signUp(email: string, password: string, fullName: string): Promise<AuthUser> {
+  public static async signUp(email: string, password: string, fullName: string): Promise<SignUpResult> {
     const { isConfigured } = getSupabaseEnv();
-
     if (!isConfigured) {
-      if (!email || !password || password.length < 8) {
-        throw new Error("كلمة المرور يجب ألا تقل عن 8 أحرف لضمان الأمان.");
-      }
-      const mockUser: AuthUser = {
-        id: "usr-dev-" + Date.now(),
-        email,
-        fullName: fullName || email.split("@")[0],
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem(DEMO_AUTH_STORAGE_KEY, JSON.stringify(mockUser));
-      }
-      return mockUser;
+      throw new Error("إعدادات Supabase غير مهيأة. إنشاء الحساب معطل لحماية البيانات.");
     }
 
     const supabase = getBrowserSupabaseClient();
@@ -141,35 +123,34 @@ export class AuthService {
     });
 
     if (error || !data.user) {
-      throw new Error(error?.message || "تعذر إنشاء الحساب. يرجى المحاولة مرة أخرى.");
+      throw new Error(error?.message || "تعذر إنشاء الحساب.");
+    }
+
+    // In Supabase, if confirmation is enabled, session will be null
+    if (!data.session) {
+      return {
+        user: null,
+        confirmationPending: true,
+      };
     }
 
     return {
-      id: data.user.id,
-      email: data.user.email || "",
-      fullName,
+      user: {
+        id: data.user.id,
+        email: data.user.email || "",
+        fullName,
+      },
+      confirmationPending: false,
     };
   }
 
   /**
-   * Sign In via Google OAuth.
+   * Initiates Google OAuth flow via Supabase.
    */
   public static async signInWithGoogle(): Promise<void> {
     const { isConfigured } = getSupabaseEnv();
-
     if (!isConfigured) {
-      // In dev mock mode, simulate immediate Google login
-      const mockUser: AuthUser = {
-        id: "usr-google-demo",
-        email: "photographer.demo@gmail.com",
-        fullName: "مصور تجريبي (Google)",
-        avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem(DEMO_AUTH_STORAGE_KEY, JSON.stringify(mockUser));
-        window.location.reload();
-      }
-      return;
+      throw new Error("إعدادات Supabase غير مهيأة. تسجيل الدخول عبر Google معطل لحماية البيانات.");
     }
 
     const supabase = getBrowserSupabaseClient();
@@ -183,19 +164,17 @@ export class AuthService {
     });
 
     if (error) {
-      throw new Error("فشل بدء تسجيل الدخول عبر Google: " + error.message);
+      throw new Error("فشل بدء تدفق Google OAuth: " + error.message);
     }
   }
 
   /**
-   * Reset Password Request.
+   * Sends Password Reset Email.
    */
   public static async resetPassword(email: string): Promise<void> {
     const { isConfigured } = getSupabaseEnv();
-
     if (!isConfigured) {
-      // Mock reset response
-      return;
+      throw new Error("إعدادات Supabase غير مهيأة.");
     }
 
     const supabase = getBrowserSupabaseClient();
@@ -204,28 +183,22 @@ export class AuthService {
     });
 
     if (error) {
-      // Generic message to avoid enumeration
-      throw new Error("إذا كان البريد مسجلاً لدينا، فستصلك رسالة إعادة ضبط كلمة المرور.");
+      throw new Error("إذا كان البريد مسجلاً، فستصلك رسالة إعادة ضبط كلمة المرور.");
     }
   }
 
   /**
-   * Sign Out and clear session state.
+   * Signs Out and destroys active session.
    */
   public static async signOut(): Promise<void> {
     const { isConfigured } = getSupabaseEnv();
+    if (!isConfigured) return;
 
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(DEMO_AUTH_STORAGE_KEY);
-    }
-
-    if (isConfigured) {
-      try {
-        const supabase = getBrowserSupabaseClient();
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.error("[AuthService] Sign out error:", err);
-      }
+    try {
+      const supabase = getBrowserSupabaseClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("[AuthService] Error during Supabase signOut:", err);
     }
   }
 }

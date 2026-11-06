@@ -7,6 +7,7 @@ import { generate3dLutCube } from "../palette/lut-generator";
 import { generateSecureToken } from "../tokens/crypto";
 import { Invoice, Payment, IncomeLedgerEntry } from "../schemas/invoice";
 import { ColorPalette } from "../schemas/palette";
+import { defaultProjectRepository } from "../repositories/project-repository";
 
 export interface ShotItem {
   id: string;
@@ -106,6 +107,9 @@ export interface ProjectState {
   toggleShotCompleted: (id: string) => void;
   toggleGearPacked: (id: string) => void;
   setStorageInputs: (inputs: Partial<ProjectState>) => void;
+  ownerId: string | null;
+  loadForUser: (userId: string) => Promise<void>;
+  syncWithCloud: () => Promise<{ synced: number; conflicts: number; failed: number }>;
   setPaletteColors: (dominant: string, secondary: string, accent: string) => void;
   exportLutCube: () => string;
   recordPayment: (amountMinor: bigint, method: Payment["method"]) => void;
@@ -113,6 +117,30 @@ export interface ProjectState {
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
+  ownerId: null,
+  loadForUser: async (userId: string) => {
+    set({ ownerId: userId });
+    try {
+      const projects = await defaultProjectRepository.loadProjects(userId);
+      if (projects.length > 0) {
+        const p = projects[0];
+        set({
+          projectId: p.id,
+          projectTitle: p.title,
+          shootDate: p.eventDate,
+          locationName: p.location,
+          currency: (p.currency as SupportedCurrency) || "EGP",
+        });
+      }
+    } catch (err) {
+      console.warn("[ProjectStore] loadForUser error:", err);
+    }
+  },
+  syncWithCloud: async () => {
+    const ownerId = get().ownerId;
+    if (!ownerId) return { synced: 0, conflicts: 0, failed: 0 };
+    return await defaultProjectRepository.syncPendingQueue(ownerId);
+  },
   projectId: "proj-cairo-wedding-2026",
   projectTitle: "حفل زفاف القاهرة الفاخر",
   projectType: "Wedding & Cinematic Video",
