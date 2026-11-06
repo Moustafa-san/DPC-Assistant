@@ -20,10 +20,17 @@ export async function GET(request: Request) {
     if (isConfigured) {
       try {
         const supabase = createClient(url, anonKey);
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           console.error("[AuthCallback] Code exchange failed:", exchangeError.message);
           return NextResponse.redirect(`${origin}/?auth_error=${encodeURIComponent(exchangeError.message)}`);
+        }
+
+        if (data?.session) {
+          // Pass session tokens to browser via hash fragment so @supabase/supabase-js securely persists it into localStorage
+          const redirectUrl = new URL(`${origin}${next}`);
+          redirectUrl.hash = `access_token=${data.session.access_token}&refresh_token=${data.session.refresh_token}&token_type=bearer`;
+          return NextResponse.redirect(redirectUrl.toString());
         }
       } catch (err) {
         console.error("[AuthCallback] Code exchange exception:", err);
