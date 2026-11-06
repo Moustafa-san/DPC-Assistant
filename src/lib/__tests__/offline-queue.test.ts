@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { OfflineQueueManager, OfflineOperation } from "../repositories/offline-queue";
 
-describe("Account-Isolated Offline Operation Queue", () => {
+describe("Account-Isolated Offline Operation Queue (Commit 10)", () => {
   let queueManager: OfflineQueueManager;
 
   const userA = "user-1111-cairo";
@@ -11,7 +11,7 @@ describe("Account-Isolated Offline Operation Queue", () => {
     queueManager = new OfflineQueueManager();
   });
 
-  it("enqueues operations and isolates pending changes strictly per user account", () => {
+  it("enqueues operations and isolates pending changes strictly per user account", async () => {
     const opUserA: OfflineOperation = {
       operationId: "op-1",
       userId: userA,
@@ -36,21 +36,21 @@ describe("Account-Isolated Offline Operation Queue", () => {
       syncStatus: "pending",
     };
 
-    queueManager.enqueue(opUserA);
-    queueManager.enqueue(opUserB);
+    await queueManager.enqueue(opUserA);
+    await queueManager.enqueue(opUserB);
 
     // User A can only see op-1
-    const pendingA = queueManager.getPendingOperations(userA);
+    const pendingA = await queueManager.getPendingOperations(userA);
     expect(pendingA.length).toBe(1);
     expect(pendingA[0].operationId).toBe("op-1");
 
     // User B can only see op-2
-    const pendingB = queueManager.getPendingOperations(userB);
+    const pendingB = await queueManager.getPendingOperations(userB);
     expect(pendingB.length).toBe(1);
     expect(pendingB[0].operationId).toBe("op-2");
   });
 
-  it("tracks sync status transitions accurately (pending -> synced)", () => {
+  it("tracks sync status transitions accurately (pending -> synced)", async () => {
     const op: OfflineOperation = {
       operationId: "op-sync-1",
       userId: userA,
@@ -63,15 +63,15 @@ describe("Account-Isolated Offline Operation Queue", () => {
       syncStatus: "pending",
     };
 
-    queueManager.enqueue(op);
-    expect(queueManager.getPendingOperations(userA).length).toBe(1);
+    await queueManager.enqueue(op);
+    expect((await queueManager.getPendingOperations(userA)).length).toBe(1);
 
     // Mark as successfully synced
-    queueManager.markSynced(userA, "op-sync-1");
-    expect(queueManager.getPendingOperations(userA).length).toBe(0);
+    await queueManager.markSynced(userA, "op-sync-1");
+    expect((await queueManager.getPendingOperations(userA)).length).toBe(0);
   });
 
-  it("purges user data upon account logout to prevent data leakage on shared devices", () => {
+  it("purges user data upon account logout to prevent data leakage on shared devices", async () => {
     const op: OfflineOperation = {
       operationId: "op-shared-1",
       userId: userA,
@@ -84,11 +84,11 @@ describe("Account-Isolated Offline Operation Queue", () => {
       syncStatus: "pending",
     };
 
-    queueManager.enqueue(op);
-    expect(queueManager.getPendingOperations(userA).length).toBe(1);
+    await queueManager.enqueue(op);
+    expect((await queueManager.getPendingOperations(userA)).length).toBe(1);
 
     // User logs out and clears their cached device data
-    queueManager.purgeUserData(userA);
-    expect(queueManager.getPendingOperations(userA).length).toBe(0);
+    queueManager.purgeUserData(userA, true);
+    expect((await queueManager.getPendingOperations(userA)).length).toBe(0);
   });
 });

@@ -15,6 +15,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -38,6 +53,13 @@ jobs:
 
       - name: Unit, Integration & Acceptance Test Suite (Vitest)
         run: npm test
+
+      - name: Live PostgreSQL 16 Multi-Tenant RLS Penetration Suite
+        env:
+          PGPASSWORD: postgrespassword
+        run: |
+          psql -h localhost -U postgres -d postgres -f supabase/migrations/20261106000000_init_schema_and_rls.sql
+          psql -h localhost -U postgres -d postgres -f supabase/tests/rls_security_live.sql
 
       - name: Production Build (Next.js App Router)
         run: npm run build

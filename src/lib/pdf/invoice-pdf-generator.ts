@@ -1,4 +1,7 @@
+import { PDFDocument, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { reshapeArabic } from "./arabic-reshaper";
+import { loadArabicFontBuffer } from "./font-loader";
 
 export interface PdfInvoiceItem {
   description: string;
@@ -12,7 +15,7 @@ export interface PdfInvoiceData {
   issueDate: string;
   dueDate: string;
   studioName: string;
-  photographerName: string;
+  photographerName?: string;
   clientName: string;
   projectName: string;
   items: PdfInvoiceItem[];
@@ -25,178 +28,290 @@ export interface PdfInvoiceData {
 }
 
 /**
- * Byte-Accurate Standalone PDF 1.4 Document Builder.
- * 
- * Strict Fixes for Independent Code Audit:
- * 1. Stream lengths are calculated strictly from UTF-8 BYTE length, not JS string character count.
- * 2. XREF offsets are strictly calculated from byte offsets in the binary buffer.
- * 3. Supports bidirectional visual reshaping for Arabic RTL display.
+ * Enterprise Arabic & Bidi PDF Invoice Generator.
+ * Built with pdf-lib & @pdf-lib/fontkit, embedding genuine TrueType Arabic typography (Tahoma).
+ * Adheres to:
+ * 1. True OpenType/TrueType Arabic font embedding (CIDFontType2 with ToUnicode CMap).
+ * 2. Visual glyph shaping and RTL reordering via reshapeArabic.
+ * 3. Exact standard PDF 1.7 binary compliance renderable in Acrobat, Preview, Chrome, and Mobile viewers.
  */
 export class ArabicInvoicePdfGenerator {
   /**
-   * Builds byte-accurate PDF 1.4 binary buffer.
+   * Generates a fully embedded TrueType Arabic PDF document.
    */
-  public static generatePdf(data: PdfInvoiceData): Uint8Array {
-    const encoder = new TextEncoder();
+  public static async generatePdf(data: PdfInvoiceData, customFontBuffer?: Uint8Array): Promise<Uint8Array> {
+    const fontBytes = customFontBuffer || (await loadArabicFontBuffer());
 
-    // Visual Bidi reshaping for right-to-left runs
-    const reshapedStudio = reshapeArabic(data.studioName || "استوديو تصوير محترف");
-    const reshapedClient = reshapeArabic(data.clientName || "العميل");
-    const reshapedProject = reshapeArabic(data.projectName || "مشروع تصوير");
-    const reshapedTitle = reshapeArabic("فاتورة ضريبية");
-    const reshapedTotalLabel = reshapeArabic("الإجمالي المستحق:");
+    const doc = await PDFDocument.create();
+    doc.registerFontkit(fontkit);
 
-    // Construct stream content
-    let streamText = "q\n";
-    // Header Bar (Deep Olive background)
-    streamText += "0.275 0.318 0.231 rg\n";
-    streamText += "0 790 595.28 52 re f\n";
+    // Embed the TrueType font with full Arabic Unicode support
+    const arabicFont = await doc.embedFont(fontBytes, { subset: false });
 
-    // Header Text (White)
-    streamText += "1 1 1 rg\n";
-    streamText += "BT\n/F1 16 Tf\n40 808 Td\n(" + this.escapePdfText(data.invoiceNumber) + ") Tj\nET\n";
-    streamText += "BT\n/F1 14 Tf\n380 808 Td\n(" + this.escapePdfText(reshapedTitle) + " / TAX INVOICE) Tj\nET\n";
+    // Standard A4 dimensions in points (595.28 x 841.89)
+    const page = doc.addPage([595.28, 841.89]);
+    const { width, height } = page.getSize();
 
-    // Meta Details (Warm Charcoal)
-    streamText += "0.16 0.17 0.15 rg\n";
-    streamText += "BT\n/F1 11 Tf\n40 750 Td\n(Studio: " + this.escapePdfText(reshapedStudio) + ") Tj\nET\n";
-    streamText += "BT\n/F1 9 Tf\n40 732 Td\n(Date: " + this.escapePdfText(data.issueDate) + "   |   Due: " + this.escapePdfText(data.dueDate) + ") Tj\nET\n";
-    streamText += "BT\n/F1 11 Tf\n350 750 Td\n(Client: " + this.escapePdfText(reshapedClient) + ") Tj\nET\n";
-    streamText += "BT\n/F1 9 Tf\n350 732 Td\n(Project: " + this.escapePdfText(reshapedProject) + ") Tj\nET\n";
+    // Palette Colors (Deep Olive, Warm Charcoal, Cream Neutral)
+    const oliveColor = rgb(0.275, 0.318, 0.231);
+    const charcoalColor = rgb(0.16, 0.17, 0.15);
+    const lightBgColor = rgb(0.96, 0.95, 0.91);
+    const borderGray = rgb(0.86, 0.83, 0.78);
+    const whiteColor = rgb(1, 1, 1);
 
-    // Line separator
-    streamText += "0.86 0.83 0.78 RG\n1 w\n40 710 m 555 710 l S\n";
+    // 1. Header Banner
+    page.drawRectangle({
+      x: 0,
+      y: height - 52,
+      width: width,
+      height: 52,
+      color: oliveColor,
+    });
 
-    // Table Header
-    streamText += "0.96 0.95 0.91 rg\n40 680 515 22 re f\n";
-    streamText += "0.16 0.17 0.15 rg\n";
-    streamText += "BT\n/F1 10 Tf\n50 687 Td\n(Item Description) Tj\nET\n";
-    streamText += "BT\n/F1 10 Tf\n360 687 Td\n(Qty) Tj\nET\n";
-    streamText += "BT\n/F1 10 Tf\n420 687 Td\n(Unit Price) Tj\nET\n";
-    streamText += "BT\n/F1 10 Tf\n500 687 Td\n(Total) Tj\nET\n";
+    // Invoice Number (Left)
+    page.drawText(data.invoiceNumber || "INV-0001", {
+      x: 40,
+      y: height - 34,
+      size: 16,
+      font: arabicFont,
+      color: whiteColor,
+    });
 
-    // Line items
-    let currentY = 655;
+    // Tax Invoice Title (Right / Arabic Reshaped)
+    const titleText = reshapeArabic("فاتورة ضريبية") + " / TAX INVOICE";
+    page.drawText(titleText, {
+      x: 340,
+      y: height - 34,
+      size: 14,
+      font: arabicFont,
+      color: whiteColor,
+    });
+
+    // 2. Studio & Client Meta Information
+    const studioText = reshapeArabic("الاستوديو: " + (data.studioName || "استوديو تصوير"));
+    const clientText = reshapeArabic("العميل: " + (data.clientName || "عميل كريم"));
+    const projectText = reshapeArabic("المشروع: " + (data.projectName || "مشروع تصوير"));
+    const dateText = `Date: ${data.issueDate}   |   Due: ${data.dueDate}`;
+
+    page.drawText(studioText, {
+      x: 40,
+      y: height - 90,
+      size: 11,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    page.drawText(dateText, {
+      x: 40,
+      y: height - 108,
+      size: 9,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    page.drawText(clientText, {
+      x: 320,
+      y: height - 90,
+      size: 11,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    page.drawText(projectText, {
+      x: 320,
+      y: height - 108,
+      size: 9,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    // Separator line
+    page.drawLine({
+      start: { x: 40, y: height - 125 },
+      end: { x: width - 40, y: height - 125 },
+      thickness: 1,
+      color: borderGray,
+    });
+
+    // 3. Items Table Header
+    const tableTop = height - 155;
+    page.drawRectangle({
+      x: 40,
+      y: tableTop,
+      width: width - 80,
+      height: 24,
+      color: lightBgColor,
+    });
+
+    page.drawText(reshapeArabic("بيان الخدمة / البند"), {
+      x: 50,
+      y: tableTop + 7,
+      size: 10,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    page.drawText(reshapeArabic("الكمية"), {
+      x: 340,
+      y: tableTop + 7,
+      size: 10,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    page.drawText(reshapeArabic("السعر"), {
+      x: 410,
+      y: tableTop + 7,
+      size: 10,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    page.drawText(reshapeArabic("الإجمالي"), {
+      x: 490,
+      y: tableTop + 7,
+      size: 10,
+      font: arabicFont,
+      color: charcoalColor,
+    });
+
+    // 4. Line Items
+    let currentY = tableTop - 22;
     for (const item of data.items) {
-      const reshapedDesc = reshapeArabic(item.description);
-      streamText += "BT\n/F1 9 Tf\n50 " + currentY + " Td\n(" + this.escapePdfText(reshapedDesc) + ") Tj\nET\n";
-      streamText += "BT\n/F1 9 Tf\n365 " + currentY + " Td\n(" + item.quantity + ") Tj\nET\n";
-      streamText += "BT\n/F1 9 Tf\n420 " + currentY + " Td\n(" + this.escapePdfText(item.unitPriceFormatted) + ") Tj\nET\n";
-      streamText += "BT\n/F1 9 Tf\n500 " + currentY + " Td\n(" + this.escapePdfText(item.totalFormatted) + ") Tj\nET\n";
+      const descReshaped = reshapeArabic(item.description);
+      page.drawText(descReshaped, {
+        x: 50,
+        y: currentY,
+        size: 9,
+        font: arabicFont,
+        color: charcoalColor,
+      });
+
+      page.drawText(String(item.quantity), {
+        x: 350,
+        y: currentY,
+        size: 9,
+        font: arabicFont,
+        color: charcoalColor,
+      });
+
+      page.drawText(item.unitPriceFormatted, {
+        x: 410,
+        y: currentY,
+        size: 9,
+        font: arabicFont,
+        color: charcoalColor,
+      });
+
+      page.drawText(item.totalFormatted, {
+        x: 490,
+        y: currentY,
+        size: 9,
+        font: arabicFont,
+        color: charcoalColor,
+      });
+
       currentY -= 20;
     }
 
-    // Totals Box
-    streamText += "0.86 0.83 0.78 RG\n40 " + (currentY + 10) + " m 555 " + (currentY + 10) + " l S\n";
-    const totalsY = currentY - 15;
-    streamText += "BT\n/F1 10 Tf\n380 " + totalsY + " Td\n(Subtotal: " + this.escapePdfText(data.subtotalFormatted) + ") Tj\nET\n";
-    streamText += "BT\n/F1 10 Tf\n380 " + (totalsY - 18) + " Td\n(Tax / VAT: " + this.escapePdfText(data.taxFormatted) + ") Tj\nET\n";
+    // 5. Totals Box
+    currentY -= 10;
+    page.drawLine({
+      start: { x: 40, y: currentY + 15 },
+      end: { x: width - 40, y: currentY + 15 },
+      thickness: 1,
+      color: borderGray,
+    });
 
-    // Total Due highlight box
-    streamText += "0.275 0.318 0.231 rg\n360 " + (totalsY - 48) + " 195 24 re f\n";
-    streamText += "1 1 1 rg\n";
-    streamText += "BT\n/F1 11 Tf\n370 " + (totalsY - 40) + " Td\n(" + this.escapePdfText(reshapedTotalLabel) + " " + this.escapePdfText(data.totalFormatted) + ") Tj\nET\n";
+    const subtotalLabel = reshapeArabic("المجموع الفرعي:") + " " + data.subtotalFormatted;
+    const taxLabel = reshapeArabic("ضريبة القيمة المضافة:") + " " + data.taxFormatted;
+    const totalLabel = reshapeArabic("الإجمالي الكلي:") + " " + data.totalFormatted;
+    const paidLabel = reshapeArabic("المبلغ المسدد:") + " " + data.paidFormatted;
+    const balanceLabel = reshapeArabic("المتبقي للدفع:") + " " + data.balanceFormatted;
 
-    // Balance
-    streamText += "0.16 0.17 0.15 rg\n";
-    streamText += "BT\n/F1 10 Tf\n380 " + (totalsY - 70) + " Td\n(Paid: " + this.escapePdfText(data.paidFormatted) + "  |  Balance: " + this.escapePdfText(data.balanceFormatted) + ") Tj\nET\n";
+    page.drawText(subtotalLabel, {
+      x: 340,
+      y: currentY,
+      size: 9,
+      font: arabicFont,
+      color: charcoalColor,
+    });
 
-    // Footer
-    streamText += "0.45 0.46 0.42 rg\n";
-    streamText += "BT\n/F1 8 Tf\n180 40 Td\n(Photographer Assistant Studio OS - Verified Independent Audit) Tj\nET\n";
-    streamText += "Q\n";
+    currentY -= 16;
+    page.drawText(taxLabel, {
+      x: 340,
+      y: currentY,
+      size: 9,
+      font: arabicFont,
+      color: charcoalColor,
+    });
 
-    // STRICT BYTE COUNTING: Stream bytes are encoded first
-    const streamBytes = encoder.encode(streamText);
-    const streamByteLength = streamBytes.byteLength;
+    currentY -= 18;
+    page.drawText(totalLabel, {
+      x: 340,
+      y: currentY,
+      size: 11,
+      font: arabicFont,
+      color: oliveColor,
+    });
 
-    // Build PDF objects with byte-accurate stream lengths
-    const obj1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-    const obj2 = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 595.28 841.89] >>\nendobj\n";
-    const obj3 = "3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
-    const obj4 = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n";
-    const obj5Header = "5 0 obj\n<< /Length " + streamByteLength + " >>\nstream\n";
-    const obj5Footer = "\nendstream\nendobj\n";
+    currentY -= 16;
+    page.drawText(paidLabel, {
+      x: 340,
+      y: currentY,
+      size: 9,
+      font: arabicFont,
+      color: charcoalColor,
+    });
 
-    // Measure exact byte offsets
-    const headerBytes = encoder.encode("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
-    const obj1Bytes = encoder.encode(obj1);
-    const obj2Bytes = encoder.encode(obj2);
-    const obj3Bytes = encoder.encode(obj3);
-    const obj4Bytes = encoder.encode(obj4);
-    const obj5HeaderBytes = encoder.encode(obj5Header);
-    const obj5FooterBytes = encoder.encode(obj5Footer);
+    currentY -= 16;
+    page.drawText(balanceLabel, {
+      x: 340,
+      y: currentY,
+      size: 10,
+      font: arabicFont,
+      color: rgb(0.8, 0.1, 0.1),
+    });
 
-    const offset1 = headerBytes.byteLength;
-    const offset2 = offset1 + obj1Bytes.byteLength;
-    const offset3 = offset2 + obj2Bytes.byteLength;
-    const offset4 = offset3 + obj3Bytes.byteLength;
-    const offset5 = offset4 + obj4Bytes.byteLength;
-    const offsetAfterObj5 = offset5 + obj5HeaderBytes.byteLength + streamByteLength + obj5FooterBytes.byteLength;
+    // 6. Notes / Footer
+    if (data.notes) {
+      currentY -= 30;
+      page.drawText(reshapeArabic("ملاحظات وشروط الدفع:"), {
+        x: 40,
+        y: currentY,
+        size: 9,
+        font: arabicFont,
+        color: charcoalColor,
+      });
 
-    // Format XREF Table with padded 10-digit exact byte offsets
-    const formatOffset = (num: number) => ("0000000000" + num).slice(-10);
-    const xref =
-      "xref\n0 6\n" +
-      "0000000000 65535 f \n" +
-      formatOffset(offset1) + " 00000 n \n" +
-      formatOffset(offset2) + " 00000 n \n" +
-      formatOffset(offset3) + " 00000 n \n" +
-      formatOffset(offset4) + " 00000 n \n" +
-      formatOffset(offset5) + " 00000 n \n";
+      page.drawText(reshapeArabic(data.notes), {
+        x: 40,
+        y: currentY - 14,
+        size: 8,
+        font: arabicFont,
+        color: rgb(0.4, 0.4, 0.4),
+      });
+    }
 
-    const trailer =
-      "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" +
-      offsetAfterObj5 +
-      "\n%%EOF\n";
-
-    const xrefBytes = encoder.encode(xref);
-    const trailerBytes = encoder.encode(trailer);
-
-    // Concatenate all byte arrays into a single Uint8Array
-    const totalLength =
-      headerBytes.byteLength +
-      obj1Bytes.byteLength +
-      obj2Bytes.byteLength +
-      obj3Bytes.byteLength +
-      obj4Bytes.byteLength +
-      obj5HeaderBytes.byteLength +
-      streamByteLength +
-      obj5FooterBytes.byteLength +
-      xrefBytes.byteLength +
-      trailerBytes.byteLength;
-
-    const result = new Uint8Array(totalLength);
-    let pos = 0;
-
-    const append = (buf: Uint8Array) => {
-      result.set(buf, pos);
-      pos += buf.byteLength;
-    };
-
-    append(headerBytes);
-    append(obj1Bytes);
-    append(obj2Bytes);
-    append(obj3Bytes);
-    append(obj4Bytes);
-    append(obj5HeaderBytes);
-    append(streamBytes);
-    append(obj5FooterBytes);
-    append(xrefBytes);
-    append(trailerBytes);
-
-    return result;
+    return await doc.save();
   }
 
-  public static generatePdfBlob(data: PdfInvoiceData): Blob {
-    const bytes = this.generatePdf(data);
+  /**
+   * Generates a Blob instance for browser downloads.
+   */
+  public static async generatePdfBlob(data: PdfInvoiceData, customFontBuffer?: Uint8Array): Promise<Blob> {
+    const bytes = await this.generatePdf(data, customFontBuffer);
     return new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
   }
 
-  public static downloadInvoicePdf(data: PdfInvoiceData, filename?: string): void {
+  /**
+   * Browser convenience utility to generate and trigger instant PDF download.
+   */
+  public static async downloadInvoicePdf(data: PdfInvoiceData, filename?: string): Promise<void> {
+    const bytes = await this.generatePdf(data);
     if (typeof window === "undefined") return;
 
-    const blob = this.generatePdfBlob(data);
+    const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -205,9 +320,5 @@ export class ArabicInvoicePdfGenerator {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }
-
-  private static escapePdfText(text: string): string {
-    return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   }
 }

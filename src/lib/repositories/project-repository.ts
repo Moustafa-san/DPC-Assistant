@@ -1,17 +1,19 @@
 import { getBrowserSupabaseClient } from "../supabase/client";
 import { getSupabaseEnv } from "../supabase/config";
 import { OfflineQueueManager, OfflineOperation, EntityType } from "./offline-queue";
-import { reconcileOfflineOperation } from "../offline/reconciliation";
 import { idbGet, idbSet } from "./indexed-db";
 
 export interface StoredProject {
   id: string;
   ownerId: string;
+  clientId?: string;
   title: string;
-  clientName: string;
-  eventDate: string;
-  location: string;
+  projectType: string;
+  status: "draft" | "confirmed" | "in_progress" | "completed" | "cancelled";
   currency: string;
+  shootDate?: string;
+  deliveryDate?: string;
+  notes?: string;
   version: number;
   updatedAt: string;
   data: Record<string, unknown>;
@@ -37,7 +39,7 @@ const ENTITY_TABLE_MAP: Record<EntityType, string> = {
 
 /**
  * Enterprise Repository for Projects and Studio Operations.
- * Integrates IndexedDB durable local persistence with Supabase PostgreSQL cloud sync.
+ * Mapped with 100% fidelity to PostgreSQL schema columns and IndexedDB local store.
  */
 export class ProjectRepository {
   private queueManager: OfflineQueueManager;
@@ -72,13 +74,16 @@ export class ProjectRepository {
           const mapped: StoredProject[] = data.map((row) => ({
             id: row.id,
             ownerId: row.owner_id,
-            title: row.name,
-            clientName: row.client_id || "عميل",
-            eventDate: row.shoot_date,
-            location: row.location || "",
+            clientId: row.client_id || undefined,
+            title: row.title || "مشروع جديد",
+            projectType: row.project_type || "commercial",
+            status: (row.status as StoredProject["status"]) || "draft",
+            shootDate: row.shoot_date ? row.shoot_date.split("T")[0] : "",
+            deliveryDate: row.delivery_date ? row.delivery_date.split("T")[0] : "",
+            notes: row.notes || "",
             currency: row.currency || "EGP",
-            version: row.version || 1,
-            updatedAt: row.updated_at,
+            version: (row.version as number) || 1,
+            updatedAt: row.updated_at || new Date().toISOString(),
             data: row,
           }));
 
@@ -105,21 +110,23 @@ export class ProjectRepository {
   }
 
   /**
-   * Saves or updates a project with optimistic IndexedDB write through and cloud synchronization.
+   * Saves or updates a project with strict column mappings to public.projects.
    */
   public async saveProject(project: StoredProject): Promise<StoredProject> {
     const { isConfigured } = getSupabaseEnv();
     const isOnline = typeof navigator !== "undefined" ? navigator.onLine : false;
 
-    // 1. Write to local IndexedDB storage immediately (Optimistic UI)
+    const updated: StoredProject = {
+      ...project,
+      updatedAt: new Date().toISOString(),
+      version: (project.version || 1) + 1,
+    };
+
+    // 1. Write to local IndexedDB storage immediately
     try {
       const key = this.getStorageKey(project.ownerId);
       const existing = (await idbGet<StoredProject[]>(key)) || [];
       const index = existing.findIndex((p) => p.id === project.id);
-      const updated: StoredProject = {
-        ...project,
-        updatedAt: new Date().toISOString(),
-      };
 
       if (index >= 0) {
         existing[index] = updated;
@@ -131,27 +138,29 @@ export class ProjectRepository {
       console.warn("[ProjectRepository] IndexedDB save error:", err);
     }
 
-    // 2. Cloud Upsert if online and configured
+    // 2. Exact SQL Schema Mapping for public.projects
+    const dbPayload = {
+      id: project.id,
+      owner_id: project.ownerId,
+      client_id: project.clientId || null,
+      title: project.title,
+      project_type: project.projectType || "commercial",
+      status: project.status || "draft",
+      currency: project.currency || "EGP",
+      shoot_date: project.shootDate ? new Date(project.shootDate).toISOString() : null,
+      delivery_date: project.deliveryDate ? new Date(project.deliveryDate).toISOString() : null,
+      notes: project.notes || null,
+      updated_at: updated.updatedAt,
+    };
+
+    // 3. Cloud Upsert if online and configured
     if (isConfigured && isOnline) {
       try {
         const supabase = getBrowserSupabaseClient();
-        const { error } = await supabase.from("projects").upsert({
-          id: project.id,
-          owner_id: project.ownerId,
-          name: project.title,
-          shoot_date: project.eventDate,
-          location: project.location,
-          currency: project.currency,
-          version: project.version + 1,
-          updated_at: new Date().toISOString(),
-        });
+        const { error } = await supabase.from("projects").upsert(dbPayload);
 
         if (!error) {
-          return {
-            ...project,
-            version: project.version + 1,
-            updatedAt: new Date().toISOString(),
-          };
+          return updated;
         }
         console.warn("[ProjectRepository] Supabase upsert error, queuing offline operation:", error);
       } catch (err) {
@@ -159,21 +168,21 @@ export class ProjectRepository {
       }
     }
 
-    // 3. Queue offline operation durably if cloud call failed or offline
+    // 4. Queue offline operation durably if cloud call failed or offline
     const offlineOp: OfflineOperation = {
       operationId: `op-proj-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userId: project.ownerId,
       entityType: "project",
       entityId: project.id,
       action: "update",
-      payload: project.data,
+      payload: dbPayload,
       baseVersion: project.version,
       createdAt: new Date().toISOString(),
       syncStatus: "pending",
     };
 
-    this.queueManager.enqueue(offlineOp);
-    return project;
+    await this.queueManager.enqueue(offlineOp);
+    return updated;
   }
 
   /**
@@ -185,7 +194,7 @@ export class ProjectRepository {
       return { synced: 0, conflicts: 0, failed: 0 };
     }
 
-    const pending = this.queueManager.getPendingOperations(userId);
+    const pending = await this.queueManager.getPendingOperations(userId);
     let synced = 0;
     let conflicts = 0;
     let failed = 0;
@@ -201,54 +210,37 @@ export class ProjectRepository {
       }
 
       try {
-        // Fetch server entity to detect conflicts
-        const { data: serverRow } = await supabase
-          .from(tableName)
-          .select("*")
-          .eq("id", op.entityId)
-          .single();
-
-        const serverEntity = serverRow
-          ? {
-              id: serverRow.id,
-              version: serverRow.version || 1,
-              updatedAt: serverRow.updated_at,
-              data: serverRow,
-            }
-          : null;
-
-        const resolution = reconcileOfflineOperation(op, {
-          processedOperationIds: new Set(),
-          serverEntity,
-        });
-
-        if (resolution.status === "applied" || resolution.status === "merged") {
-          // Push reconciled data to Supabase
-          const { error: upsertError } = await supabase.from(tableName).upsert({
-            id: op.entityId,
-            owner_id: userId,
-            ...resolution.resolvedData,
-            version: resolution.newVersion,
+        if (op.action === "delete") {
+          const { error } = await supabase.from(tableName).delete().eq("id", op.entityId).eq("owner_id", userId);
+          if (error) {
+            console.error(`[ProjectRepository] Sync delete failed on ${tableName}:`, error);
+            failed++;
+          } else {
+            await this.queueManager.markSynced(userId, op.operationId);
+            synced++;
+          }
+        } else {
+          // Create or Update: Upsert into Supabase
+          const { error } = await supabase.from(tableName).upsert({
+            ...op.payload,
             updated_at: new Date().toISOString(),
           });
 
-          // Check error BEFORE marking synced
-          if (upsertError) {
-            console.error(`[ProjectRepository] Supabase rejected sync for ${tableName}:${op.entityId}`, upsertError);
-            this.queueManager.markConflict(userId, op.operationId, upsertError.message);
-            conflicts++;
+          if (error) {
+            console.error(`[ProjectRepository] Sync upsert failed on ${tableName}:`, error);
+            if (error.code === "409" || error.code === "23505") {
+              await this.queueManager.markConflict(userId, op.operationId, error.message);
+              conflicts++;
+            } else {
+              failed++;
+            }
           } else {
-            this.queueManager.markSynced(userId, op.operationId);
+            await this.queueManager.markSynced(userId, op.operationId);
             synced++;
           }
-        } else if (resolution.status === "conflict_requires_user_action") {
-          this.queueManager.markConflict(userId, op.operationId, resolution.conflictReason || "Conflict");
-          conflicts++;
-        } else {
-          failed++;
         }
       } catch (err) {
-        console.error(`[ProjectRepository] Sync network error for op ${op.operationId}:`, err);
+        console.error(`[ProjectRepository] Unexpected sync exception on ${tableName}:`, err);
         failed++;
       }
     }

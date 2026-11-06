@@ -80,8 +80,19 @@ describe("Live PostgreSQL RLS Schema Audit across all 15 Tables", () => {
 
     // Must seed auth.users for foreign key integrity
     expect(testSql).toContain("INSERT INTO auth.users");
+
+    // Must test all 15 tables across all 4 operations (SELECT, UPDATE, DELETE, INSERT)
+    for (const table of expectedTables) {
+      expect(testSql).toContain(`FROM public.${table}`);
+      expect(testSql).toContain(`UPDATE public.${table}`);
+      expect(testSql).toContain(`DELETE FROM public.${table}`);
+    }
+
     // Must test child table cross-tenant injection
     expect(testSql).toContain("INSERT INTO public.invoice_items");
+    expect(testSql).toContain("INSERT INTO public.quote_items");
+    expect(testSql).toContain("INSERT INTO public.shots");
+
     // Must test tenant B isolation
     expect(testSql).toContain("request.jwt.claim.sub");
     // Must cleanly roll back all test mutations

@@ -1,6 +1,7 @@
 /**
  * Pure Native IndexedDB Key-Value Storage Provider.
  * Zero external dependencies, fully asynchronous, persistent across browser restarts.
+ * Features BigInt-safe serialization and automatic Node.js/Test fallback.
  */
 
 const DB_NAME = "dpc_assistant_idb";
@@ -8,6 +9,32 @@ const STORE_NAME = "keyval";
 const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+const nodeMemoryStore = new Map<string, unknown>();
+
+/**
+ * BigInt-Safe JSON stringifier to preserve financial minor units across storage.
+ */
+export function safeStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, val) =>
+    typeof val === "bigint" ? { __type: "bigint", value: val.toString() } : val
+  );
+}
+
+/**
+ * BigInt-Safe JSON parser to restore financial minor units from storage.
+ */
+export function safeParse<T>(jsonStr: string): T {
+  return JSON.parse(jsonStr, (_key, val) => {
+    if (val && typeof val === "object" && (val as { __type?: string }).__type === "bigint") {
+      return BigInt((val as { value: string }).value);
+    }
+    return val;
+  });
+}
+
+function safeClone<T>(val: T): T {
+  return safeParse<T>(safeStringify(val));
+}
 
 function getDb(): Promise<IDBDatabase> {
   if (typeof window === "undefined" || !window.indexedDB) {
@@ -34,10 +61,14 @@ function getDb(): Promise<IDBDatabase> {
 }
 
 /**
- * Retrieves a value from IndexedDB with localStorage fallback.
+ * Retrieves a value from IndexedDB with localStorage and in-memory fallback.
  */
 export async function idbGet<T>(key: string): Promise<T | null> {
-  if (typeof window === "undefined") return null;
+  // Node / Test Environment fallback
+  if (typeof window === "undefined") {
+    const val = nodeMemoryStore.get(key);
+    return val !== undefined ? (safeClone(val) as T) : null;
+  }
 
   if (window.indexedDB) {
     try {
@@ -57,7 +88,7 @@ export async function idbGet<T>(key: string): Promise<T | null> {
 
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
+    return raw ? safeParse<T>(raw) : null;
   } catch {
     return null;
   }
@@ -67,11 +98,15 @@ export async function idbGet<T>(key: string): Promise<T | null> {
  * Stores a value durably in IndexedDB and syncs to localStorage.
  */
 export async function idbSet<T>(key: string, value: T): Promise<void> {
-  if (typeof window === "undefined") return;
+  // Node / Test Environment fallback
+  if (typeof window === "undefined") {
+    nodeMemoryStore.set(key, safeClone(value));
+    return;
+  }
 
   // Sync to localStorage as immediate secondary cache
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, safeStringify(value));
   } catch (err) {
     console.warn("[idbSet] LocalStorage fallback write failed:", err);
   }
@@ -97,7 +132,10 @@ export async function idbSet<T>(key: string, value: T): Promise<void> {
  * Deletes a key from storage.
  */
 export async function idbDel(key: string): Promise<void> {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") {
+    nodeMemoryStore.delete(key);
+    return;
+  }
 
   try {
     localStorage.removeItem(key);
