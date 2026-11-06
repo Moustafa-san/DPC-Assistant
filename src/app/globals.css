@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-warm-ivory: #F6F2E9;
+  --color-soft-ivory: #FFFDF8;
+  --color-sand-beige: #E9E0D1;
+  --color-deep-olive: #46513B;
+  --color-dark-olive: #303A2B;
+  --color-light-olive: #A3A887;
+  --color-warm-charcoal: #292B25;
+  --color-muted-bronze: #A8875B;
+  --color-text-secondary: #74766B;
+  --color-border-subtle: #DCD5C8;
+
+  --color-status-success: #3D6846;
+  --color-status-success-bg: #EAF2EC;
+  --color-status-warning: #A26A28;
+  --color-status-warning-bg: #FAF3E8;
+  --color-status-error: #9E3B3B;
+  --color-status-error-bg: #F9EEEE;
+
+  --font-cairo: "Cairo", sans-serif;
+  --font-alexandria: "Alexandria", sans-serif;
+  --font-inter: "Inter", sans-serif;
+}
+
+:root {
+  --bg-canvas: #F6F2E9;
+  --surface-card: #FFFDF8;
+  --surface-secondary: #E9E0D1;
+  --interactive-primary: #46513B;
+  --interactive-hover: #303A2B;
+  --text-primary: #292B25;
+  --text-muted: #74766B;
+  --accent-bronze: #A8875B;
+  --border-subtle: #DCD5C8;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-cairo), system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric data within RTL interfaces must render in LTR */
+[dir="rtl"] .numeric-ltr {
+  direction: ltr;
+  display: inline-block;
+}
+
+/* Touch targets rule */
+.min-touch-target {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* Accessible focus ring for WCAG 2.2 AA Keyboard Navigation */
+:focus-visible {
+  outline: 2px solid var(--interactive-primary);
+  outline-offset: 2px;
+}
+
+/* Mobile Safe Areas for PWA */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 1rem);
+}
+
